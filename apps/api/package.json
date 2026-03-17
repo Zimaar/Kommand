@@ -16,6 +16,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.79.0",
     "@fastify/cors": "^10.0.0",
     "@fastify/sensible": "^6.0.0",
     "@kommand/shared": "*",
