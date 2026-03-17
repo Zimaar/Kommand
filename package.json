@@ -9,7 +9,7 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
-    "lint": "turbo run lint",
+    "lint": "eslint . && turbo run lint",
     "test": "turbo run test",
     "clean": "turbo run clean && rm -rf node_modules",
     "docker:up": "docker compose up -d",
@@ -21,8 +21,11 @@
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
-    "turbo": "^2.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.57.1",
+    "@typescript-eslint/parser": "^8.57.1",
+    "eslint": "^9.39.4",
     "tsx": "^4.7.0",
+    "turbo": "^2.0.0",
     "typescript": "^5.4.0"
   },
   "overrides": {

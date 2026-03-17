@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const ToolPlatformSchema = z.enum(['shopify', 'xero', 'quickbooks', 'stripe', 'internal']);
+export const ToolPlatformSchema = z.enum(['shopify', 'xero', 'quickbooks', 'stripe', 'internal']);
 
 export const ToolContextSchema = z.object({
   userId: z.string(),
