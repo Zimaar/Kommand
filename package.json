@@ -11,7 +11,10 @@
     "dev": "turbo run dev --parallel",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "clean": "turbo run clean && rm -rf node_modules"
+    "clean": "turbo run clean && rm -rf node_modules",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "db:seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
     "react": "^19.0.0",
@@ -19,6 +22,7 @@
   },
   "devDependencies": {
     "turbo": "^2.0.0",
+    "tsx": "^4.7.0",
     "typescript": "^5.4.0"
   },
   "overrides": {
