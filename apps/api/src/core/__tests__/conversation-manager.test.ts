@@ -47,9 +47,15 @@ class InMemoryConversationRepo implements ConversationRepository {
     return this.msgs.get(conversationId)?.length ?? 0;
   }
 
-  async getOldestMessages(conversationId: string, limit: number): Promise<Array<{ role: string; content: string }>> {
+  async getOldestMessages(conversationId: string, limit: number): Promise<Array<{ id: string; role: string; content: string }>> {
     const bucket = this.msgs.get(conversationId) ?? [];
-    return bucket.slice(0, limit).map(({ role, content }) => ({ role, content }));
+    return bucket.slice(0, limit).map(({ id, role, content }) => ({ id, role, content }));
+  }
+
+  async deleteMessages(ids: string[]): Promise<void> {
+    for (const [convId, bucket] of this.msgs.entries()) {
+      this.msgs.set(convId, bucket.filter((m) => !ids.includes(m.id)));
+    }
   }
 }
 
@@ -189,6 +195,35 @@ describe('ConversationManager', () => {
       const systemMsg = allMessages.find((m) => m.role === 'system');
       expect(systemMsg).toBeTruthy();
       expect(systemMsg!.content).toContain('Business summary');
+    });
+
+    it('prunes the summarised messages after storing the summary', async () => {
+      const mockAnthropic = {
+        messages: {
+          create: vi.fn().mockResolvedValue({
+            content: [{ type: 'text', text: 'Summary of 35 messages.' }],
+          }),
+        },
+      } as unknown as Anthropic;
+
+      const mgr = new ConversationManager(repo, mockAnthropic);
+      const convId = await mgr.getOrCreateConversation('u1', 'ch1');
+
+      // Add 35 messages
+      for (let i = 0; i < 35; i++) {
+        const role = i % 2 === 0 ? 'user' : 'assistant';
+        await mgr.addMessage(convId, { direction: 'inbound', role, content: `msg ${i}` });
+      }
+
+      await mgr.summarizeIfLong(convId);
+
+      // 35 original - 20 pruned + 1 summary = 16
+      const remaining = await repo.countMessages(convId);
+      expect(remaining).toBe(16);
+
+      // The oldest remaining message should no longer be msg 0..19
+      const oldest = await repo.getOldestMessages(convId, 1);
+      expect(oldest[0]!.content).not.toMatch(/^msg (0|1[0-9]?)$/);
     });
   });
 });

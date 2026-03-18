@@ -1,4 +1,4 @@
-import { eq, and, gt, desc, asc, count } from 'drizzle-orm';
+import { eq, and, gt, desc, asc, count, inArray } from 'drizzle-orm';
 import Anthropic from '@anthropic-ai/sdk';
 import type { DB } from '../db/connection.js';
 import { conversations, messages } from '../db/schema.js';
@@ -35,7 +35,8 @@ export interface ConversationRepository {
   insertMessage(conversationId: string, msg: MessageInput): Promise<string>;
   getMessages(conversationId: string, limit: number): Promise<Array<{ role: string; content: string; createdAt: Date }>>;
   countMessages(conversationId: string): Promise<number>;
-  getOldestMessages(conversationId: string, limit: number): Promise<Array<{ role: string; content: string }>>;
+  getOldestMessages(conversationId: string, limit: number): Promise<Array<{ id: string; role: string; content: string }>>;
+  deleteMessages(ids: string[]): Promise<void>;
 }
 
 // ─── Drizzle implementation ───────────────────────────────────────────────────
@@ -108,13 +109,18 @@ export class DrizzleConversationRepository implements ConversationRepository {
     return Number(row?.value ?? 0);
   }
 
-  async getOldestMessages(conversationId: string, limit: number): Promise<Array<{ role: string; content: string }>> {
+  async getOldestMessages(conversationId: string, limit: number): Promise<Array<{ id: string; role: string; content: string }>> {
     return this.db
-      .select({ role: messages.role, content: messages.content })
+      .select({ id: messages.id, role: messages.role, content: messages.content })
       .from(messages)
       .where(eq(messages.conversationId, conversationId))
       .orderBy(asc(messages.createdAt))
       .limit(limit);
+  }
+
+  async deleteMessages(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.db.delete(messages).where(inArray(messages.id, ids));
   }
 }
 
@@ -193,6 +199,9 @@ export class ConversationManager {
       role: 'system',
       content: `[Conversation summary]: ${summary}`,
     });
+
+    // Prune the messages that were just summarised so the conversation doesn't grow unboundedly
+    await this.repo.deleteMessages(oldMessages.map((m) => m.id));
 
     return summary;
   }
