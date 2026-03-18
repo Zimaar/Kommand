@@ -26,6 +26,7 @@ const MAX_WA_TEXT = 4096;
 // ─── WhatsAppAdapter ──────────────────────────────────────────────────────────
 
 export class WhatsAppAdapter implements ChannelAdapter {
+  private sender: WhatsAppSender | null = null;
   /**
    * Parse the already-extracted `{ from, id, text, timestamp }` object
    * produced by the inbound route handler. Normalizes the sender phone to
@@ -86,7 +87,8 @@ export class WhatsAppAdapter implements ChannelAdapter {
     }
 
     const msg = formatted as FormattedWhatsApp;
-    const sender = new WhatsAppSender(config.WHATSAPP_PHONE_NUMBER_ID, config.WHATSAPP_ACCESS_TOKEN);
+    this.sender ??= new WhatsAppSender(config.WHATSAPP_PHONE_NUMBER_ID, config.WHATSAPP_ACCESS_TOKEN);
+    const sender = this.sender;
 
     switch (msg.type) {
       case 'text':    await sender.sendText(msg.to, msg.text); break;
