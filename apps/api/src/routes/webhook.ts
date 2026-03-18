@@ -12,11 +12,7 @@ import { ToolRegistry } from '../core/tool-registry.js';
 import { AiBrain } from '../core/ai-brain.js';
 import { ConversationManager } from '../core/conversation-manager.js';
 import { DbConfirmationEngine } from '../core/confirmation-engine.js';
-import { registerShopifyOrderTools } from '../tools/shopify/orders-read.js';
-import { registerShopifyOrderWriteTools } from '../tools/shopify/orders-write.js';
-import { registerShopifyProductTools } from '../tools/shopify/products.js';
-import { registerShopifyCustomerTools } from '../tools/shopify/customers.js';
-import { registerShopifyDiscountTools } from '../tools/shopify/discounts.js';
+import { registerAllShopifyTools } from '../tools/shopify/shopify-tools.js';
 import { config } from '../config/index.js';
 
 const KNOWN_CHANNEL_TYPES = new Set(['whatsapp', 'slack', 'email', 'telegram']);
@@ -68,11 +64,7 @@ class DbCommandStore implements CommandStore {
 
 function buildPipelineDeps(): PipelineDeps {
   const registry = new ToolRegistry();
-  registerShopifyOrderTools(db, registry);
-  registerShopifyOrderWriteTools(db, registry);
-  registerShopifyProductTools(db, registry);
-  registerShopifyCustomerTools(db, registry);
-  registerShopifyDiscountTools(db, registry);
+  registerAllShopifyTools(db, registry);
 
   const anthropic = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
   const aiBrain = new AiBrain(anthropic, registry);
