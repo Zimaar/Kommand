@@ -25,6 +25,18 @@ interface ListSection {
   rows: ListRow[];
 }
 
+/** A single component inside a WhatsApp template (body, header, button, etc.) */
+export interface WhatsAppTemplateComponent {
+  type: 'header' | 'body' | 'button';
+  sub_type?: 'quick_reply' | 'url';
+  index?: number;
+  parameters: Array<
+    | { type: 'text'; text: string }
+    | { type: 'currency'; currency: { fallback_value: string; code: string; amount_1000: number } }
+    | { type: 'image'; image: { link: string } }
+  >;
+}
+
 // Meta Graph API error shape
 interface MetaErrorResponse {
   error?: {
@@ -196,9 +208,37 @@ export class WhatsAppSender {
     await this.post(body);
   }
 
+  /**
+   * Send a pre-approved WhatsApp template message.
+   * Templates are required for business-initiated messages outside the 24-hour window.
+   *
+   * @param to          - Recipient phone in E.164 format
+   * @param templateName - The approved template name (e.g. "morning_brief")
+   * @param languageCode - BCP-47 language code (default "en_US")
+   * @param components  - Template components (body params, header media, buttons, etc.)
+   */
+  async sendTemplate(
+    to: string,
+    templateName: string,
+    languageCode: string,
+    components: WhatsAppTemplateComponent[]
+  ): Promise<WhatsAppSendResult> {
+    const body = {
+      messaging_product: 'whatsapp',
+      to,
+      type: 'template',
+      template: {
+        name: templateName,
+        language: { code: languageCode },
+        components,
+      },
+    };
+    return this.post(body);
+  }
+
   // ─── Internal ───────────────────────────────────────────────────────────────
 
-  private async post(body: unknown): Promise<WhatsAppSendResult> {
+  protected async post(body: unknown): Promise<WhatsAppSendResult> {
     const allowed = await acquireToken();
     if (!allowed) {
       throw AppError.rateLimitExceeded('WhatsApp rate limit reached (250 msg/s) — please retry shortly');
