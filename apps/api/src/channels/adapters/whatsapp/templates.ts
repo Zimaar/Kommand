@@ -67,7 +67,7 @@ interface TemplateDef {
   params: string[];
 }
 
-const TEMPLATE_REGISTRY: Record<string, TemplateDef> = {
+export const TEMPLATE_REGISTRY: Record<string, TemplateDef> = {
   morning_brief: {
     description: 'Good morning {name}! Here\'s your business update: {body}',
     language: 'en_US',
