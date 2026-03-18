@@ -5,6 +5,7 @@ import { MAX_MESSAGE_LENGTH } from '../config/index.js';
 import { handlePipelineError } from '../core/error-handler.js';
 import type { ChannelAdapter } from './adapter.interface.js';
 import { MockAdapter } from './adapters/mock.adapter.js';
+import { WhatsAppAdapter } from './adapters/whatsapp/adapter.js';
 import type { DB } from '../db/connection.js';
 import { users, stores, accountingConnections, channels } from '../db/schema.js';
 import type { AiBrain } from '../core/ai-brain.js';
@@ -31,7 +32,7 @@ const queue: QueueJob[] = [];
 let isProcessing = false;
 
 const adapters: Record<string, ChannelAdapter> = {
-  whatsapp: new MockAdapter(),
+  whatsapp: new WhatsAppAdapter(),
   slack: new MockAdapter(),
   email: new MockAdapter(),
   telegram: new MockAdapter(),

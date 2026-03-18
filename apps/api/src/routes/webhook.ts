@@ -62,7 +62,7 @@ class DbCommandStore implements CommandStore {
 
 // ─── Pipeline factory ─────────────────────────────────────────────────────────
 
-function buildPipelineDeps(): PipelineDeps {
+export function buildPipelineDeps(): PipelineDeps {
   const registry = new ToolRegistry();
   registerAllShopifyTools(db, registry);
 
@@ -78,9 +78,7 @@ function buildPipelineDeps(): PipelineDeps {
 
 // ─── Route ────────────────────────────────────────────────────────────────────
 
-export async function webhookRoutes(app: FastifyInstance) {
-  const deps = buildPipelineDeps();
-  const ingestion = new MessageIngestionService(app.log, deps);
+export async function webhookRoutes(app: FastifyInstance, ingestion: MessageIngestionService) {
 
   app.post<{ Params: { channelType: string } }>(
     '/webhook/:channelType',
