@@ -1,9 +1,29 @@
+import { eq, and } from 'drizzle-orm';
 import type { InboundMessage } from '@kommand/shared';
 import type { FastifyBaseLogger } from 'fastify';
 import { MAX_MESSAGE_LENGTH } from '../config/index.js';
 import { handlePipelineError } from '../core/error-handler.js';
 import type { ChannelAdapter } from './adapter.interface.js';
 import { MockAdapter } from './adapters/mock.adapter.js';
+import type { DB } from '../db/connection.js';
+import { users, stores, accountingConnections, channels } from '../db/schema.js';
+import type { AiBrain } from '../core/ai-brain.js';
+import type { ConversationManager } from '../core/conversation-manager.js';
+import type { ConfirmationEngine } from '../core/confirmation-engine.js';
+import type { ToolDispatcher } from '../core/tool-dispatcher.js';
+import { responseFormatter } from '../core/response-formatter.js';
+import type { UserContext } from '../core/types.js';
+import { getRedisClient } from '../utils/redis.js';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface PipelineDeps {
+  db: DB;
+  aiBrain: AiBrain;
+  conversationManager: ConversationManager;
+  confirmationEngine: ConfirmationEngine;
+  toolDispatcher: ToolDispatcher;
+}
 
 // Simple in-memory queue — will be replaced with BullMQ in M6
 type QueueJob = { channelType: string; raw: unknown };
@@ -17,8 +37,13 @@ const adapters: Record<string, ChannelAdapter> = {
   telegram: new MockAdapter(),
 };
 
+// ─── MessageIngestionService ──────────────────────────────────────────────────
+
 export class MessageIngestionService {
-  constructor(private readonly logger: FastifyBaseLogger) {}
+  constructor(
+    private readonly logger: FastifyBaseLogger,
+    private readonly deps?: PipelineDeps
+  ) {}
 
   /**
    * Enqueue inbound message for async processing.
@@ -60,7 +85,7 @@ export class MessageIngestionService {
     // a. Normalize raw body → InboundMessage
     const message = adapter.parseInbound(rawBody);
 
-    // b. Deduplicate (placeholder — Redis dedup wired in M2 once Redis client is bootstrapped)
+    // b. Deduplicate via Redis SET NX (1hr TTL)
     const isDuplicate = await this.checkDuplicate(message.channelMessageId);
     if (isDuplicate) {
       this.logger.info({ channelMessageId: message.channelMessageId }, 'Duplicate message, skipping');
@@ -78,17 +103,150 @@ export class MessageIngestionService {
       'Processing inbound message'
     );
 
-    // d. Look up user by channel info (placeholder — DB lookup in M2)
-    // e. Store message in DB (placeholder — M2)
-    // f. Check for pending confirmations (placeholder — M3)
-    // g. Pass to AI Brain (placeholder — M2)
-    // h. Send response via outbound adapter
-    await this.sendAcknowledgement(channelType, truncated, adapter);
+    // No deps wired (dev/test without DB) — send acknowledgement and stop
+    if (!this.deps) {
+      await this.sendAcknowledgement(channelType, truncated, adapter);
+      return;
+    }
+
+    const { db, aiBrain, conversationManager, confirmationEngine, toolDispatcher } = this.deps;
+
+    // d. Look up user from DB to build UserContext
+    const userRows = await db
+      .select({ id: users.id, name: users.name, timezone: users.timezone, plan: users.plan })
+      .from(users)
+      .where(eq(users.id, truncated.userId))
+      .limit(1);
+
+    if (userRows.length === 0) {
+      this.logger.warn({ userId: truncated.userId }, 'User not found in DB, skipping pipeline');
+      return;
+    }
+
+    const user = userRows[0]!;
+
+    // Fetch active stores (storeName + connectedTools) in one query
+    const storeRows = await db
+      .select({ shopName: stores.shopName, platform: stores.platform })
+      .from(stores)
+      .where(and(eq(stores.userId, user.id), eq(stores.isActive, true)));
+
+    const accountingRows = await db
+      .select({ platform: accountingConnections.platform })
+      .from(accountingConnections)
+      .where(and(eq(accountingConnections.userId, user.id), eq(accountingConnections.isActive, true)));
+
+    const storeName = storeRows[0]?.shopName ?? '';
+    const connectedTools = [
+      ...storeRows.map((s) => s.platform),
+      ...accountingRows.map((a) => a.platform),
+    ];
+
+    // e. Look up channel record and store inbound message
+    // Best-effort: if no channel row in DB (e.g. mock), skip persistence but continue
+    const channelRows = await db
+      .select({ id: channels.id })
+      .from(channels)
+      .where(
+        and(
+          eq(channels.userId, user.id),
+          eq(channels.type, channelType as 'whatsapp' | 'slack' | 'email' | 'telegram')
+        )
+      )
+      .limit(1);
+
+    let conversationId: string | null = null;
+    if (channelRows.length > 0) {
+      conversationId = await conversationManager.getOrCreateConversation(user.id, channelRows[0]!.id);
+      await conversationManager.addMessage(conversationId, {
+        direction: 'inbound',
+        role: 'user',
+        content: truncated.text,
+        channelMessageId: truncated.channelMessageId,
+      });
+    }
+
+    // f. Check if this message is a reply to a pending confirmation
+    const confResult = await confirmationEngine.handleResponse(
+      truncated.userId,
+      truncated.text,
+      (confId, ctx) => toolDispatcher.executeConfirmed(confId, ctx)
+    );
+
+    if (confResult.handled) {
+      const responseText = confResult.message
+        ?? (confResult.result?.success
+          ? (typeof confResult.result.data === 'string'
+              ? confResult.result.data
+              : JSON.stringify(confResult.result.data))
+          : `❌ ${confResult.result?.error ?? 'Action failed'}`);
+      await this.sendAndStore(channelType, truncated.userId, responseText, conversationId, conversationManager, adapter);
+      return;
+    }
+
+    // g. Build UserContext and pass to AI Brain
+    const history = conversationId ? await conversationManager.getHistory(conversationId) : [];
+
+    const userCtx: UserContext = {
+      userId: user.id,
+      name: user.name ?? '',
+      storeName,
+      currency: 'USD', // resolved from store settings in M3
+      timezone: user.timezone,
+      connectedTools,
+      plan: user.plan,
+      conversationHistory: history,
+    };
+
+    const brainResponse = await aiBrain.processMessage(truncated, userCtx);
+
+    // h. Store outbound message and send via adapter
+    await this.sendAndStore(
+      channelType,
+      truncated.userId,
+      brainResponse.text || '(no response)',
+      conversationId,
+      conversationManager,
+      adapter,
+      { tokensUsed: brainResponse.tokensUsed, latencyMs: brainResponse.latencyMs }
+    );
   }
 
-  private async checkDuplicate(_channelMessageId: string): Promise<boolean> {
-    // Placeholder: Redis SET NX with 1hr TTL will be added in M2
-    return false;
+  private async sendAndStore(
+    channelType: string,
+    userId: string,
+    text: string,
+    conversationId: string | null,
+    conversationManager: ConversationManager,
+    adapter: ChannelAdapter,
+    metrics?: { tokensUsed: number; latencyMs: number }
+  ): Promise<void> {
+    if (conversationId) {
+      await conversationManager.addMessage(conversationId, {
+        direction: 'outbound',
+        role: 'assistant',
+        content: text,
+        tokensUsed: metrics?.tokensUsed,
+        latencyMs: metrics?.latencyMs,
+      });
+    }
+
+    const outbound = responseFormatter.formatForChannel(text, channelType);
+    const formatted = adapter.formatOutbound({ ...outbound, userId });
+    await adapter.send(formatted);
+  }
+
+  private async checkDuplicate(channelMessageId: string): Promise<boolean> {
+    try {
+      const redis = getRedisClient();
+      const key = `dedup:msg:${channelMessageId}`;
+      // SET NX EX 3600 — returns 'OK' if new, null if key already existed
+      const result = await redis.set(key, '1', 'EX', 3600, 'NX');
+      return result === null;
+    } catch {
+      this.logger.warn('Redis unavailable for dedup, processing message anyway');
+      return false;
+    }
   }
 
   private async sendAcknowledgement(
