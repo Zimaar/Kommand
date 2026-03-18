@@ -289,6 +289,10 @@ export interface ChartDataPoint {
  * Charts are sized for WhatsApp mobile (400×220), use a dark blue line on white,
  * and apply large axis labels for readability on small screens.
  *
+ * ⚠️  WhatsApp's image `link` field has a ~2000-character limit. URLs can exceed
+ * this with many data points or long labels — keep `dataPoints.length` ≤ 30 and
+ * labels short (≤ 6 chars) to stay within the limit.
+ *
  * @example
  * const url = generateSalesChart(dataPoints, 'Revenue (AED)');
  * await sender.sendImage(to, url, 'Sales trend');
