@@ -99,174 +99,143 @@ function OnboardingContent() {
         throw new Error(data.error ?? 'Failed to initiate connection');
       }
 
-      const data = (await res.json()) as { url: string };
-      window.location.href = data.url;
+      const { url } = (await res.json()) as { url: string };
+      window.location.href = url;
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(err instanceof Error ? err.message : 'Unknown error');
       setLoading(false);
     }
   }
 
   function handleSkip() {
-    router.push('/onboarding?step=2');
+    router.push(`/onboarding?step=${currentStep + 1}`);
   }
 
-  function handleNext() {
-    router.push('/onboarding?step=2');
+  function handleBack() {
+    if (currentStep > 1) {
+      router.push(`/onboarding?step=${currentStep - 1}`);
+    }
   }
 
-  // Only show step 1 for now — steps 2 and 3 are placeholders for future prompts
-  if (currentStep !== 1) {
+  // Step 1: Connect Shopify
+  if (currentStep === 1) {
     return (
-      <div className="mx-auto max-w-lg py-12 text-center">
-        <ProgressBar current={currentStep} />
-        <div className="mt-12 rounded-2xl border bg-card p-8">
-          <p className="text-muted-foreground">
-            {currentStep === 2
-              ? 'Connect WhatsApp — coming in Prompt 4.4'
-              : 'Preferences — coming in Prompt 4.5'}
-          </p>
-          <Button
-            variant="outline"
-            className="mt-6"
-            onClick={() =>
-              currentStep === 2
-                ? router.push('/onboarding?step=3')
-                : router.push('/overview')
-            }
-          >
-            {currentStep === 2 ? 'Next' : 'Finish'}
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="mx-auto max-w-lg py-12">
-      <ProgressBar current={1} />
-
-      <div className="mt-12 rounded-2xl border bg-card p-8">
-        {/* Shopify icon */}
-        <div className="mb-6 flex justify-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[#95BF47]/10">
-            <ShoppingBag className="h-8 w-8 text-[#95BF47]" />
+      <div className="flex h-screen flex-col items-center justify-center bg-background px-6">
+        <div className="w-full max-w-md">
+          {/* Progress bar */}
+          <div className="mb-8 flex gap-2">
+            {STEPS.map((_, i) => (
+              <div
+                key={i}
+                className={`h-1 flex-1 rounded-full ${i < currentStep ? 'bg-primary' : 'bg-muted'}`}
+              />
+            ))}
           </div>
-        </div>
 
-        <h2 className="mb-2 text-center text-xl font-semibold">
-          Connect your Shopify store
-        </h2>
-        <p className="mb-8 text-center text-sm text-muted-foreground">
-          Link your store so Kommand can manage orders, products, and customers
-          for you.
-        </p>
-
-        {checkingConnection ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : isConnected ? (
-          /* Connected state */
-          <div className="space-y-6">
-            <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-900 dark:bg-green-950/30">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100 dark:bg-green-900">
-                <Check className="h-5 w-5 text-green-600 dark:text-green-400" />
-              </div>
-              <div className="flex-1">
-                <p className="font-medium text-green-800 dark:text-green-300">
-                  {connection?.shopName ?? connection?.shopDomain ?? 'Store'}{' '}
-                  connected
-                </p>
-                {connection?.shopDomain && (
-                  <p className="text-sm text-green-600 dark:text-green-500">
-                    {connection.shopDomain}
-                  </p>
-                )}
-              </div>
-              <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700 dark:bg-green-900 dark:text-green-300">
-                Connected
-              </span>
+          {/* Header */}
+          <div className="mb-8">
+            <div className="mb-3 flex items-center gap-3">
+              <ShoppingBag className="h-6 w-6 text-primary" />
+              <h1 className="text-2xl font-bold">Connect Shopify</h1>
             </div>
-
-            <Button className="w-full gap-2" onClick={handleNext}>
-              Continue <ArrowRight className="h-4 w-4" />
-            </Button>
+            <p className="text-muted-foreground">
+              Link your Shopify store to get started with Kommand.
+            </p>
           </div>
-        ) : (
-          /* Connect form */
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="store-url" className="mb-1.5">
-                Store URL
-              </Label>
-              <div className="flex items-center gap-2">
+
+          {checkingConnection ? (
+            <div className="flex justify-center py-8">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : isConnected ? (
+            // Connected state
+            <div className="rounded-lg border border-green-200 bg-green-50 p-6 dark:border-green-900 dark:bg-green-950">
+              <div className="mb-4 flex items-start gap-3">
+                <Check className="mt-1 h-5 w-5 text-green-600 dark:text-green-400" />
+                <div>
+                  <h3 className="font-semibold text-green-900 dark:text-green-200">
+                    Store Connected
+                  </h3>
+                  <p className="text-sm text-green-700 dark:text-green-300">
+                    {connection?.shopName || connection?.shopDomain}
+                  </p>
+                </div>
+              </div>
+              <Button onClick={() => router.push('/onboarding?step=2')} className="w-full">
+                Continue <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            // Connect form
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleConnect();
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <Label htmlFor="store-url">Your Shopify Store URL</Label>
                 <Input
                   id="store-url"
-                  placeholder="mystore"
+                  placeholder="mystore or mystore.myshopify.com"
                   value={storeUrl}
                   onChange={(e) => {
                     setStoreUrl(e.target.value);
                     setError('');
                   }}
-                  onKeyDown={(e) => e.key === 'Enter' && handleConnect()}
-                  className="flex-1"
+                  disabled={loading}
                 />
-                <span className="shrink-0 text-sm text-muted-foreground">
-                  .myshopify.com
-                </span>
+                {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
               </div>
-              {error && (
-                <p className="mt-1.5 text-sm text-destructive">{error}</p>
-              )}
-            </div>
 
-            <Button
-              className="w-full gap-2"
-              onClick={handleConnect}
-              disabled={loading}
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" /> Connecting...
-                </>
-              ) : (
-                <>
-                  <ShoppingBag className="h-4 w-4" /> Connect Shopify
-                </>
-              )}
-            </Button>
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Connecting...
+                  </>
+                ) : (
+                  <>
+                    Connect Store
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </>
+                )}
+              </Button>
 
-            <button
-              type="button"
-              onClick={handleSkip}
-              className="w-full text-center text-sm text-muted-foreground transition hover:text-foreground"
-            >
-              Skip for now
-            </button>
-          </div>
-        )}
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={handleSkip}
+                disabled={loading}
+              >
+                Skip for now
+              </Button>
+            </form>
+          )}
+        </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
-function ProgressBar({ current }: { current: number }) {
+  // Step 2 & 3: Placeholder pages
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between text-sm">
-        <span className="font-medium">Step {current} of 3</span>
-        <span className="text-muted-foreground">{STEPS[current - 1]}</span>
-      </div>
-      <div className="flex gap-2">
-        {[1, 2, 3].map((step) => (
-          <div
-            key={step}
-            className={`h-1.5 flex-1 rounded-full transition-colors ${
-              step <= current ? 'bg-primary' : 'bg-muted'
-            }`}
-          />
-        ))}
+    <div className="flex h-screen flex-col items-center justify-center bg-background">
+      <div className="text-center">
+        <h1 className="text-2xl font-bold">Step {currentStep}: {STEPS[currentStep - 1]}</h1>
+        <p className="mt-2 text-muted-foreground">Coming soon</p>
+
+        <div className="mt-8 flex gap-3">
+          {currentStep > 1 && (
+            <Button variant="outline" onClick={handleBack}>
+              Back
+            </Button>
+          )}
+          <Button onClick={handleSkip}>
+            Next <ArrowRight className="ml-2 h-4 w-4" />
+          </Button>
+        </div>
       </div>
     </div>
   );
