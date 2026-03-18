@@ -14,6 +14,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
   parseInbound(raw: unknown): InboundMessage {
     const msg = raw as ParsedWhatsAppMessage;
     return {
+      // Internal ID — not stable across retries. For dedup on Meta re-delivery use channelMessageId (M4+).
       id: crypto.randomUUID(),
       // Phone number is used as userId until channel provisioning maps phone → user UUID (M3.3+)
       userId: msg.from,
