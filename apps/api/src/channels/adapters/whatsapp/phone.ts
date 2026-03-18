@@ -26,6 +26,9 @@ export function normalizePhoneNumber(input: string, defaultCountryCode?: string)
     return '+' + defaultCountryCode + digits.slice(1);
   }
 
-  // Anything else: just ensure the + prefix
+  // Anything else: just ensure the + prefix.
+  // Meta Cloud API always sends bare international digits (e.g. "14155552671"),
+  // so this catch-all is safe in the inbound path. A local number without a
+  // defaultCountryCode would produce invalid E.164 — callers must supply one.
   return '+' + digits;
 }
