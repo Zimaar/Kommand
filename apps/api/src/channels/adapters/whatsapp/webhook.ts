@@ -15,6 +15,7 @@ export async function whatsappWebhookRoutes(app: FastifyInstance) {
       schema: {
         querystring: {
           type: 'object',
+          required: ['hub.mode', 'hub.verify_token', 'hub.challenge'],
           properties: {
             'hub.mode': { type: 'string' },
             'hub.verify_token': { type: 'string' },
