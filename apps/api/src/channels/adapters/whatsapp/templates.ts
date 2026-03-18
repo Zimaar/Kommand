@@ -7,7 +7,7 @@
  *  3. Chart URLs         — mobile-optimised QuickChart image links
  */
 
-import type { WhatsAppSender, WhatsAppTemplateComponent } from './outbound.js';
+import type { WhatsAppSender, WhatsAppSendResult, WhatsAppTemplateComponent } from './outbound.js';
 
 // ─── Domain types ─────────────────────────────────────────────────────────────
 
@@ -105,7 +105,7 @@ export async function sendTemplate(
   to: string,
   templateName: string,
   params: Record<string, string>
-): Promise<void> {
+): Promise<WhatsAppSendResult> {
   const def = TEMPLATE_REGISTRY[templateName];
   if (!def) {
     throw new Error(
@@ -123,7 +123,7 @@ export async function sendTemplate(
     { type: 'body', parameters: textParams },
   ];
 
-  await sender.sendTemplate(to, templateName, def.language, components);
+  return sender.sendTemplate(to, templateName, def.language, components);
 }
 
 // ─── 2. Rich formatting helpers ───────────────────────────────────────────────
