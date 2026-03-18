@@ -77,7 +77,12 @@ function sanitizeErrorMessage(msg: string): string {
   // Strip anything that looks like a raw API key, URL, or stack trace fragment
   return msg
     .replace(/https?:\/\/\S+/g, '[url]')
-    .replace(/sk-[a-zA-Z0-9]+/g, '[key]')
+    // Anthropic keys: sk-ant-... or sk-...
+    .replace(/sk-[a-zA-Z0-9_-]+/g, '[key]')
+    // Shopify token formats: shpat_, shpca_, shppa_, shpss_, shptk_, shpua_
+    .replace(/shp[a-z]{2}_[a-zA-Z0-9]+/g, '[token]')
+    // Strip stack trace lines (  at Foo.bar (/path/file.ts:10:5) or  at async fn (...))
+    .replace(/\s+at\s+[^\n(]+\([^)]*\)/g, '')
     .slice(0, 200);
 }
 

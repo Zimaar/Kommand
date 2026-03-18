@@ -46,6 +46,31 @@ describe('handlePipelineError', () => {
     expect(msg.text).toContain('[url]');
   });
 
+  it('sanitizes Shopify access tokens (shpat_)', () => {
+    const err = AppError.toolExecutionError('401 invalid token shpat_abc123XYZ');
+    const msg = handlePipelineError(err, USER, CHANNEL);
+    expect(msg.text).not.toContain('shpat_');
+    expect(msg.text).toContain('[token]');
+  });
+
+  it('sanitizes Shopify custom-app tokens (shpca_, shppa_, shpss_)', () => {
+    for (const prefix of ['shpca_', 'shppa_', 'shpss_']) {
+      const err = AppError.toolExecutionError(`Unauthorized: ${prefix}secret999`);
+      const msg = handlePipelineError(err, USER, CHANNEL);
+      expect(msg.text).not.toContain(prefix);
+      expect(msg.text).toContain('[token]');
+    }
+  });
+
+  it('strips stack trace lines from error messages', () => {
+    const err = AppError.toolExecutionError(
+      'boom\n    at Object.run (/app/src/tools.ts:42:5)\n    at async handler (/app/src/routes.ts:10:3)'
+    );
+    const msg = handlePipelineError(err, USER, CHANNEL);
+    expect(msg.text).not.toContain('/app/src/');
+    expect(msg.text).not.toContain('.ts:');
+  });
+
   it('returns generic message for unknown errors', () => {
     const msg = handlePipelineError(new Error('something weird'), USER, CHANNEL);
     expect(msg.text).toContain("unexpected");
