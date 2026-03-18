@@ -1,6 +1,6 @@
 import type { InboundMessage, OutboundMessage } from '@kommand/shared';
 import type { ChannelAdapter } from '../../adapter.interface.js';
-import { config } from '../../../config/index.js';
+import { config, WHATSAPP_API_VERSION } from '../../../config/index.js';
 
 // Normalized form produced by the inbound route after parsing Meta payload
 export interface ParsedWhatsAppMessage {
@@ -59,7 +59,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
       return;
     }
 
-    const url = `https://graph.facebook.com/v19.0/${config.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+    const url = `https://graph.facebook.com/${WHATSAPP_API_VERSION}/${config.WHATSAPP_PHONE_NUMBER_ID}/messages`;
     const response = await fetch(url, {
       method: 'POST',
       headers: {
