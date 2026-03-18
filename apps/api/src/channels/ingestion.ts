@@ -4,8 +4,7 @@ import type { FastifyBaseLogger } from 'fastify';
 import { MAX_MESSAGE_LENGTH } from '../config/index.js';
 import { handlePipelineError } from '../core/error-handler.js';
 import type { ChannelAdapter } from './adapter.interface.js';
-import { MockAdapter } from './adapters/mock.adapter.js';
-import { WhatsAppAdapter } from './adapters/whatsapp/adapter.js';
+import { getAdapter } from './factory.js';
 import type { DB } from '../db/connection.js';
 import { users, stores, accountingConnections, channels } from '../db/schema.js';
 import type { AiBrain } from '../core/ai-brain.js';
@@ -30,13 +29,6 @@ export interface PipelineDeps {
 type QueueJob = { channelType: string; raw: unknown };
 const queue: QueueJob[] = [];
 let isProcessing = false;
-
-const adapters: Record<string, ChannelAdapter> = {
-  whatsapp: new WhatsAppAdapter(),
-  slack: new MockAdapter(),
-  email: new MockAdapter(),
-  telegram: new MockAdapter(),
-};
 
 // ─── MessageIngestionService ──────────────────────────────────────────────────
 
@@ -67,7 +59,7 @@ export class MessageIngestionService {
         this.logger.error({ err, job }, 'Failed to process inbound message');
         // Best-effort: try to send a friendly error back via the adapter
         try {
-          const adapter = adapters[job.channelType] ?? adapters['whatsapp']!;
+          const adapter = getAdapter(job.channelType);
           const raw = job.raw as Record<string, unknown>;
           const userId = (raw['userId'] as string) ?? 'unknown';
           const outbound = handlePipelineError(err, userId, job.channelType);
@@ -81,7 +73,7 @@ export class MessageIngestionService {
   }
 
   async processInbound(channelType: string, rawBody: unknown): Promise<void> {
-    const adapter = adapters[channelType] ?? adapters['whatsapp']!;
+    const adapter = getAdapter(channelType);
 
     // a. Normalize raw body → InboundMessage
     const message = adapter.parseInbound(rawBody);
@@ -112,15 +104,35 @@ export class MessageIngestionService {
 
     const { db, aiBrain, conversationManager, confirmationEngine, toolDispatcher } = this.deps;
 
-    // d. Look up user from DB to build UserContext
+    // d. Resolve userId → DB user
+    // For WhatsApp, truncated.userId is a normalised phone number. Resolve it
+    // to the owner's UUID via the channels table before doing the user lookup.
+    let resolvedUserId = truncated.userId;
+    if (truncated.channelType === 'whatsapp') {
+      const waChannel = await db
+        .select({ userId: channels.userId })
+        .from(channels)
+        .where(and(eq(channels.channelId, truncated.userId), eq(channels.type, 'whatsapp')))
+        .limit(1);
+
+      if (waChannel.length === 0) {
+        this.logger.warn(
+          { phone: truncated.userId },
+          'No WhatsApp channel registered for this phone — user not onboarded yet'
+        );
+        return;
+      }
+      resolvedUserId = waChannel[0]!.userId;
+    }
+
     const userRows = await db
       .select({ id: users.id, name: users.name, timezone: users.timezone, plan: users.plan })
       .from(users)
-      .where(eq(users.id, truncated.userId))
+      .where(eq(users.id, resolvedUserId))
       .limit(1);
 
     if (userRows.length === 0) {
-      this.logger.warn({ userId: truncated.userId }, 'User not found in DB, skipping pipeline');
+      this.logger.warn({ userId: resolvedUserId }, 'User not found in DB, skipping pipeline');
       return;
     }
 

@@ -4,7 +4,6 @@ import type { FastifyBaseLogger } from 'fastify';
 
 // ─── Mocks ────────────────────────────────────────────────────────────────────
 
-// Prevent Redis from being instantiated during tests
 vi.mock('../../utils/redis.js', () => ({
   getRedisClient: () => ({
     set: vi.fn().mockResolvedValue('OK'), // 'OK' = new key, not a duplicate
@@ -25,14 +24,19 @@ function makeLogger(): FastifyBaseLogger {
   } as unknown as FastifyBaseLogger;
 }
 
+// WhatsApp normalized format: { from, id, text, timestamp }
 function makeRawBody(overrides: Record<string, unknown> = {}) {
   return {
-    userId: 'user-1',
-    channelMessageId: 'msg-1',
+    from: '14155552671',
+    id: 'msg-1',
     text: 'Show me my sales',
+    timestamp: '1741000000',
     ...overrides,
   };
 }
+
+// userId after phone normalization
+const NORMALIZED_PHONE = '+14155552671';
 
 // ─── No-deps path ─────────────────────────────────────────────────────────────
 
@@ -41,11 +45,10 @@ describe('MessageIngestionService (no deps)', () => {
     const logger = makeLogger();
     const svc = new MessageIngestionService(logger);
 
-    // processInbound should not throw and should log the message
     await svc.processInbound('whatsapp', makeRawBody());
 
     expect(logger.info).toHaveBeenCalledWith(
-      expect.objectContaining({ userId: 'user-1' }),
+      expect.objectContaining({ userId: NORMALIZED_PHONE }),
       'Processing inbound message'
     );
   });
@@ -69,14 +72,23 @@ function makeDbChain(result: unknown[]) {
 }
 
 function makeDeps(overrides: Partial<PipelineDeps> = {}): PipelineDeps {
-  // DB returns: user found, no stores, no accounting, no channels
+  // DB call order for whatsapp channel:
+  //   1. channels lookup (phone → userId)
+  //   2. user lookup
+  //   3. stores
+  //   4. accounting
+  //   5. channels (for conversation)
   const db = { select: vi.fn() } as unknown as PipelineDeps['db'];
 
   let callCount = 0;
   vi.mocked(db.select).mockImplementation(() => {
     callCount++;
     if (callCount === 1) {
-      // d. user lookup — found
+      // WhatsApp phone → userId via channels table
+      return makeDbChain([{ userId: 'user-1' }]) as ReturnType<PipelineDeps['db']['select']>;
+    }
+    if (callCount === 2) {
+      // user row
       return makeDbChain([{ id: 'user-1', name: 'Alice', timezone: 'UTC', plan: 'starter' }]) as ReturnType<PipelineDeps['db']['select']>;
     }
     // stores, accounting, channels — all empty
@@ -110,14 +122,39 @@ function makeDeps(overrides: Partial<PipelineDeps> = {}): PipelineDeps {
 }
 
 describe('MessageIngestionService (with deps)', () => {
+  it('skips pipeline when WhatsApp phone is not registered', async () => {
+    const logger = makeLogger();
+    const deps = makeDeps();
+
+    // All DB calls return empty — channel lookup returns nothing
+    let callCount = 0;
+    vi.mocked(deps.db.select).mockImplementation(() => {
+      callCount++;
+      return makeDbChain([]) as ReturnType<PipelineDeps['db']['select']>;
+    });
+
+    const svc = new MessageIngestionService(logger, deps);
+    await svc.processInbound('whatsapp', makeRawBody());
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ phone: NORMALIZED_PHONE }),
+      'No WhatsApp channel registered for this phone — user not onboarded yet'
+    );
+    expect(deps.aiBrain.processMessage).not.toHaveBeenCalled();
+  });
+
   it('skips pipeline when user not found in DB', async () => {
     const logger = makeLogger();
     const deps = makeDeps();
 
-    // Override: user lookup returns empty
     let callCount = 0;
     vi.mocked(deps.db.select).mockImplementation(() => {
       callCount++;
+      if (callCount === 1) {
+        // channel lookup succeeds
+        return makeDbChain([{ userId: 'user-1' }]) as ReturnType<PipelineDeps['db']['select']>;
+      }
+      // user lookup returns empty
       return makeDbChain([]) as ReturnType<PipelineDeps['db']['select']>;
     });
 
@@ -147,17 +184,12 @@ describe('MessageIngestionService (with deps)', () => {
     const logger = makeLogger();
     const deps = makeDeps();
 
-    // Override: user found + channel found
     let callCount = 0;
     vi.mocked(deps.db.select).mockImplementation(() => {
       callCount++;
-      if (callCount === 1) {
-        return makeDbChain([{ id: 'user-1', name: 'Alice', timezone: 'UTC', plan: 'starter' }]) as ReturnType<PipelineDeps['db']['select']>;
-      }
-      if (callCount === 4) {
-        // channel lookup (4th call: user, stores, accounting, channels)
-        return makeDbChain([{ id: 'chan-1' }]) as ReturnType<PipelineDeps['db']['select']>;
-      }
+      if (callCount === 1) return makeDbChain([{ userId: 'user-1' }]) as ReturnType<PipelineDeps['db']['select']>;  // wa channel
+      if (callCount === 2) return makeDbChain([{ id: 'user-1', name: 'Alice', timezone: 'UTC', plan: 'starter' }]) as ReturnType<PipelineDeps['db']['select']>; // user
+      if (callCount === 5) return makeDbChain([{ id: 'chan-1' }]) as ReturnType<PipelineDeps['db']['select']>; // channel for conversation
       return makeDbChain([]) as ReturnType<PipelineDeps['db']['select']>;
     });
 
@@ -188,16 +220,11 @@ describe('MessageIngestionService (with deps)', () => {
   });
 
   it('skips duplicate messages', async () => {
-    // Override Redis to simulate duplicate (set returns null = key existed)
-    vi.doMock('../../utils/redis.js', () => ({
-      getRedisClient: () => ({ set: vi.fn().mockResolvedValue(null) }),
-    }));
-
     const logger = makeLogger();
     const deps = makeDeps();
     const svc = new MessageIngestionService(logger, deps);
 
-    // First call: not a dupe (mock returns 'OK')
+    // First call with default redis mock (returns 'OK' = not duplicate)
     await svc.processInbound('whatsapp', makeRawBody());
     expect(deps.aiBrain.processMessage).toHaveBeenCalledOnce();
   });
