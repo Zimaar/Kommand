@@ -61,7 +61,8 @@ export class MessageIngestionService {
         try {
           const adapter = getAdapter(job.channelType);
           const raw = job.raw as Record<string, unknown>;
-          const userId = (raw['userId'] as string) ?? 'unknown';
+          // WhatsApp raw body uses 'from' (phone); other channels use 'userId'
+          const userId = (raw['userId'] as string) ?? (raw['from'] as string) ?? 'unknown';
           const outbound = handlePipelineError(err, userId, job.channelType);
           await adapter.send(adapter.formatOutbound(outbound));
         } catch {
