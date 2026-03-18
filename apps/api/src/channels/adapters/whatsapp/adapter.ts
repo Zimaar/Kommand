@@ -82,8 +82,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
   /** Dispatches the formatted message via WhatsAppSender. */
   async send(formatted: unknown): Promise<void> {
     if (!config.WHATSAPP_ACCESS_TOKEN || !config.WHATSAPP_PHONE_NUMBER_ID) {
-      console.log('[WhatsAppAdapter] Credentials not configured — skipping send:', JSON.stringify(formatted));
-      return;
+      return; // credentials not configured (dev/test env) — no-op
     }
 
     const msg = formatted as FormattedWhatsApp;
