@@ -178,6 +178,6 @@ export async function shopifyAuthRoutes(app: FastifyInstance) {
     app.log.info({ userId, shop }, 'Shopify store connected');
 
     // 6. Redirect to dashboard
-    return reply.redirect(`${config.DASHBOARD_URL}?shopify_connected=true`);
+    return reply.redirect(`${config.DASHBOARD_URL}/onboarding?step=2&shopify=connected`);
   });
 }

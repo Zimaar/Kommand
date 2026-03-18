@@ -1,13 +1,13 @@
 import { UserButton } from '@clerk/nextjs';
-import { LayoutDashboard, Plug, Settings, MessageSquare } from 'lucide-react';
 import { NavLink } from '@/components/nav-link';
+import type { NavIconName } from '@/components/nav-link';
 import { Separator } from '@/components/ui/separator';
 
-const navItems = [
-  { href: '/overview', label: 'Overview', icon: LayoutDashboard },
-  { href: '/connections', label: 'Connections', icon: Plug },
-  { href: '/conversation-log', label: 'Conversation Log', icon: MessageSquare },
-  { href: '/settings', label: 'Settings', icon: Settings },
+const navItems: { href: string; label: string; icon: NavIconName }[] = [
+  { href: '/overview', label: 'Overview', icon: 'LayoutDashboard' },
+  { href: '/connections', label: 'Connections', icon: 'Plug' },
+  { href: '/conversation-log', label: 'Conversation Log', icon: 'MessageSquare' },
+  { href: '/settings', label: 'Settings', icon: 'Settings' },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

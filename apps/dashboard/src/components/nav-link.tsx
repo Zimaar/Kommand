@@ -2,11 +2,21 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import type { LucideIcon } from 'lucide-react';
+import { LayoutDashboard, Plug, Settings, MessageSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export function NavLink({ href, label, icon: Icon }: { href: string; label: string; icon: LucideIcon }) {
+const iconMap = {
+  LayoutDashboard,
+  Plug,
+  Settings,
+  MessageSquare,
+} as const;
+
+export type NavIconName = keyof typeof iconMap;
+
+export function NavLink({ href, label, icon }: { href: string; label: string; icon: NavIconName }) {
   const pathname = usePathname();
+  const Icon = iconMap[icon];
 
   return (
     <Link
