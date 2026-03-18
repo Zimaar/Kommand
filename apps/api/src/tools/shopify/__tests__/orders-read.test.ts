@@ -105,8 +105,14 @@ describe('getTzOffset', () => {
   it('returns +00:00 for UTC', () => {
     expect(getTzOffset(new Date('2024-06-15T12:00:00Z'), 'UTC')).toBe('+00:00');
   });
-  it('returns -05:00 for US Eastern in January', () => {
+  it('returns -05:00 for US Eastern in January (standard time)', () => {
     expect(getTzOffset(new Date('2024-01-15T12:00:00Z'), 'America/New_York')).toBe('-05:00');
+  });
+  it('returns -04:00 for US Eastern in June (daylight saving time)', () => {
+    expect(getTzOffset(new Date('2024-06-15T12:00:00Z'), 'America/New_York')).toBe('-04:00');
+  });
+  it('returns +05:30 for Asia/Kolkata (non-whole-hour offset)', () => {
+    expect(getTzOffset(new Date('2024-06-15T12:00:00Z'), 'Asia/Kolkata')).toBe('+05:30');
   });
 });
 
@@ -117,9 +123,14 @@ describe('getDateRange', () => {
   const FAKE_TODAY = '2024-06-15';
 
   beforeEach(() => {
-    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(
-      () => ({ format: () => FAKE_TODAY }) as Intl.DateTimeFormat
-    );
+    // Override format() so date-range helpers treat today as FAKE_TODAY, but
+    // preserve formatToParts() so getTzOffset (which needs real time components)
+    // continues to work correctly.
+    const Real = Intl.DateTimeFormat;
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation((...args: ConstructorParameters<typeof Intl.DateTimeFormat>) => {
+      const real = new Real(...args);
+      return { ...real, format: () => FAKE_TODAY, formatToParts: real.formatToParts.bind(real) } as Intl.DateTimeFormat;
+    });
   });
 
   afterEach(() => vi.restoreAllMocks());
@@ -150,9 +161,11 @@ describe('getPreviousDateRange', () => {
   const FAKE_TODAY = '2024-06-15';
 
   beforeEach(() => {
-    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(
-      () => ({ format: () => FAKE_TODAY }) as Intl.DateTimeFormat
-    );
+    const Real = Intl.DateTimeFormat;
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation((...args: ConstructorParameters<typeof Intl.DateTimeFormat>) => {
+      const real = new Real(...args);
+      return { ...real, format: () => FAKE_TODAY, formatToParts: real.formatToParts.bind(real) } as Intl.DateTimeFormat;
+    });
   });
 
   afterEach(() => vi.restoreAllMocks());

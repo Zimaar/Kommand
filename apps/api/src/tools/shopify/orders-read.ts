@@ -21,9 +21,33 @@ export interface DateRange {
 }
 
 export function getTzOffset(date: Date, timezone: string): string {
-  const tzDate = new Date(date.toLocaleString('en-US', { timeZone: timezone }));
-  const utcDate = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }));
-  const offsetMin = Math.round((tzDate.getTime() - utcDate.getTime()) / 60000);
+  // Extract clock components in the target timezone using formatToParts, then
+  // treat those components as UTC (via Date.UTC) to get the wall-clock epoch.
+  // The difference between that and the actual UTC epoch is the UTC offset.
+  // This avoids parsing locale strings with new Date(), which is server-TZ-dependent.
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+
+  const get = (type: string) => parseInt(parts.find((p) => p.type === type)!.value, 10);
+
+  const localAsUtc = Date.UTC(
+    get('year'),
+    get('month') - 1,
+    get('day'),
+    get('hour'),
+    get('minute'),
+    get('second')
+  );
+
+  const offsetMin = Math.round((localAsUtc - date.getTime()) / 60000);
   const sign = offsetMin >= 0 ? '+' : '-';
   const abs = Math.abs(offsetMin);
   return `${sign}${String(Math.floor(abs / 60)).padStart(2, '0')}:${String(abs % 60).padStart(2, '0')}`;
