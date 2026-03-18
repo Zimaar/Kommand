@@ -52,11 +52,11 @@ const MetaPayload = z.object({
   ),
 });
 
-type MetaMessage = z.infer<typeof MetaMessage>;
+type ParsedMetaMessage = z.infer<typeof MetaMessage>;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function extractText(msg: MetaMessage): string | null {
+function extractText(msg: ParsedMetaMessage): string | null {
   if (msg.type === 'text') return msg.text?.body ?? null;
   if (msg.type === 'interactive') {
     if (msg.interactive?.type === 'button_reply') return msg.interactive.button_reply?.payload ?? null;
