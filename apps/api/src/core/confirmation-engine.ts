@@ -1,8 +1,8 @@
-import { eq, lt, gt, and } from 'drizzle-orm';
+import { eq, lt, gt, and, desc } from 'drizzle-orm';
 import type { ToolContext, ToolResult } from '@kommand/shared';
 import { CONFIRMATION_TIMEOUT_MS } from '../config/index.js';
 import type { DB } from '../db/connection.js';
-import { pendingConfirmations } from '../db/schema.js';
+import { pendingConfirmations, commands, users } from '../db/schema.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -231,10 +231,42 @@ export class DbConfirmationEngine implements ConfirmationEngine {
   }
 
   async get(confirmationId: string): Promise<PendingConfirmationRecord | null> {
-    // DB-backed get is looked up via commandId in practice; stub returns null for now
-    // Full implementation wired in M3 when channel context is available
-    void confirmationId;
-    return null;
+    const rows = await this.db
+      .select({
+        id: pendingConfirmations.id,
+        userId: pendingConfirmations.userId,
+        commandId: pendingConfirmations.commandId,
+        promptText: pendingConfirmations.promptText,
+        expiresAt: pendingConfirmations.expiresAt,
+        status: pendingConfirmations.status,
+        toolName: commands.toolName,
+        params: commands.input,
+        tier: commands.confirmationTier,
+        timezone: users.timezone,
+      })
+      .from(pendingConfirmations)
+      .innerJoin(commands, eq(pendingConfirmations.commandId, commands.id))
+      .innerJoin(users, eq(pendingConfirmations.userId, users.id))
+      .where(eq(pendingConfirmations.id, confirmationId))
+      .limit(1);
+
+    if (rows.length === 0) return null;
+
+    const row = rows[0]!;
+    if (row.status !== 'pending' || row.expiresAt <= new Date()) return null;
+
+    return {
+      id: row.id,
+      userId: row.userId,
+      commandId: row.commandId,
+      toolName: row.toolName,
+      params: row.params,
+      // currency not yet in DB; resolved from store settings in M3
+      context: { userId: row.userId, timezone: row.timezone, currency: 'USD' },
+      promptText: row.promptText,
+      tier: row.tier,
+      expiresAt: row.expiresAt,
+    };
   }
 
   async complete(confirmationId: string): Promise<void> {
@@ -251,8 +283,15 @@ export class DbConfirmationEngine implements ConfirmationEngine {
   ): Promise<HandleResponseResult> {
     const now = new Date();
     const rows = await this.db
-      .select()
+      .select({
+        id: pendingConfirmations.id,
+        userId: pendingConfirmations.userId,
+        tier: commands.confirmationTier,
+        timezone: users.timezone,
+      })
       .from(pendingConfirmations)
+      .innerJoin(commands, eq(pendingConfirmations.commandId, commands.id))
+      .innerJoin(users, eq(pendingConfirmations.userId, users.id))
       .where(
         and(
           eq(pendingConfirmations.userId, userId),
@@ -260,13 +299,13 @@ export class DbConfirmationEngine implements ConfirmationEngine {
           gt(pendingConfirmations.expiresAt, now)
         )
       )
+      .orderBy(desc(pendingConfirmations.createdAt))
       .limit(1);
 
     if (rows.length === 0) return { handled: false };
 
     const row = rows[0]!;
-    // We don't have tier in the DB row directly; default to 1 for response parsing
-    const decision = parseConfirmationResponse(responseText, 1);
+    const decision = parseConfirmationResponse(responseText, row.tier);
     if (decision === null) return { handled: false };
 
     if (decision === 'cancelled') {
@@ -277,9 +316,10 @@ export class DbConfirmationEngine implements ConfirmationEngine {
       return { handled: true, message: '❌ Action cancelled.' };
     }
 
-    // Confirmed — execute (context reconstructed in M3; pass empty stub for now)
-    const stubContext: ToolContext = { userId, currency: 'USD', timezone: 'UTC' };
-    const result = await execute(row.id, stubContext);
+    // Confirmed — execute with reconstructed context
+    // currency resolved from store settings in M3
+    const context: ToolContext = { userId: row.userId, timezone: row.timezone, currency: 'USD' };
+    const result = await execute(row.id, context);
     return { handled: true, result };
   }
 
