@@ -4,6 +4,7 @@ import type { DB } from '../../db/connection.js';
 import type { ToolRegistry } from '../../core/tool-registry.js';
 import { getShopifyClient } from './index.js';
 import type { ShopifyClient } from './client.js';
+import { round2, percentChange, sumRevenue } from './math.js';
 
 // ─── Period types & date helpers ─────────────────────────────────────────────
 
@@ -269,18 +270,6 @@ const GetBestSellersInput = z.object({
 
 // ─── Handler helpers ──────────────────────────────────────────────────────────
 
-function sumRevenue(orders: OrderNode[]): number {
-  return orders.reduce((s, o) => s + parseFloat(o.totalPriceSet.shopMoney.amount), 0);
-}
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
-function percentChange(current: number, previous: number): number {
-  if (previous === 0) return 0;
-  return Math.round(((current - previous) / previous) * 1000) / 10;
-}
 
 async function buildSalesSummary(
   client: ShopifyClient,

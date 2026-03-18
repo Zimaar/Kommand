@@ -4,6 +4,7 @@ import type { DB } from '../../db/connection.js';
 import type { ToolRegistry } from '../../core/tool-registry.js';
 import { getShopifyClient } from './index.js';
 import type { ShopifyClient } from './client.js';
+import { round2 } from './math.js';
 
 // ─── GraphQL types ────────────────────────────────────────────────────────────
 
@@ -202,11 +203,6 @@ interface LocationsResponse {
   };
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
 
 /** Fuzzy match: every word in the query appears (case-insensitive) in the target */
 export function fuzzyMatch(query: string, target: string): boolean {

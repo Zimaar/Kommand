@@ -80,6 +80,8 @@ interface DiscountDeactivateResponse {
 
 // ─── GraphQL queries & mutations ──────────────────────────────────────────────
 
+// Note: codes(first: 5) fetches only the first 5 codes per discount node.
+// Bulk-code discounts (many unique codes) will be silently truncated to the first code in normalizeDiscountNode.
 const LIST_DISCOUNTS_GQL = `
   query ListActiveDiscounts($first: Int!, $after: String) {
     codeDiscountNodes(first: $first, after: $after, query: "status:active") {

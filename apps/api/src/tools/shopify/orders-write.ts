@@ -4,6 +4,7 @@ import type { DB } from '../../db/connection.js';
 import type { ToolRegistry } from '../../core/tool-registry.js';
 import { getShopifyClient } from './index.js';
 import type { ShopifyClient } from './client.js';
+import { round2 } from './math.js';
 
 // ─── Detailed order fetch for write operations ────────────────────────────────
 
@@ -128,9 +129,6 @@ async function fetchOrderForWrite(
   return data.orders.edges[0]?.node ?? null;
 }
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
 
 // ─── GraphQL mutations ────────────────────────────────────────────────────────
 

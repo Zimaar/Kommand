@@ -272,6 +272,38 @@ describe('get_business_summary', () => {
     expect(data.orders.averageOrderValue).toBe(0);
     expect(data.alerts).toHaveLength(0);
   });
+
+  it('adds alert when revenue drops more than 20% vs previous period', async () => {
+    const periodOrders = [
+      makeOrder({ totalPriceSet: { shopMoney: { amount: '70.00', currencyCode: 'USD' } } }),
+    ];
+    const prevOrders = [
+      makeOrder({ totalPriceSet: { shopMoney: { amount: '100.00', currencyCode: 'USD' } } }),
+    ];
+
+    let graphqlCall = 0;
+    const graphql = vi.fn().mockImplementation(() => {
+      graphqlCall++;
+      const orders = graphqlCall === 1 ? periodOrders : prevOrders;
+      return Promise.resolve({
+        orders: {
+          edges: orders.map((node) => ({ node })),
+          pageInfo: { hasNextPage: false, endCursor: null },
+        },
+      });
+    });
+    const rest = vi.fn().mockResolvedValue({ count: 0 });
+    mockGetShopifyClient.mockResolvedValue({ graphql, rest } as unknown as ShopifyClient);
+
+    const registry = makeRegistry();
+    const result = await registry.get('get_business_summary')!.handler(
+      { period: 'today' },
+      makeContext()
+    );
+
+    const data = result.data as { alerts: string[] };
+    expect(data.alerts.some((a) => a.includes('down'))).toBe(true);
+  });
 });
 
 // ─── get_trends ───────────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import type { ToolRegistry } from '../../core/tool-registry.js';
 import { getShopifyClient } from './index.js';
 import type { ShopifyClient } from './client.js';
 import { getDateRange } from './orders-read.js';
+import { round2 } from './math.js';
 
 // ─── GraphQL types ────────────────────────────────────────────────────────────
 
@@ -133,9 +134,6 @@ export async function fetchSlimOrders(
   return all;
 }
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
 
 // ─── Zod input schemas ────────────────────────────────────────────────────────
 

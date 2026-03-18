@@ -11,6 +11,7 @@ import {
   shiftDays,
   type OrderNode,
 } from './orders-read.js';
+import { round2, percentChange, sumRevenue } from './math.js';
 
 // ─── Zod input schemas ────────────────────────────────────────────────────────
 
@@ -32,20 +33,6 @@ const GetTrendsInput = z.object({
   days: z.number().int().min(2).max(30).default(7),
 });
 
-// ─── Shared helpers ───────────────────────────────────────────────────────────
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
-function percentChange(current: number, previous: number): number {
-  if (previous === 0) return 0;
-  return Math.round(((current - previous) / previous) * 1000) / 10;
-}
-
-function sumRevenue(orders: OrderNode[]): number {
-  return orders.reduce((s, o) => s + parseFloat(o.totalPriceSet.shopMoney.amount), 0);
-}
 
 function buildBestSellers(
   orders: OrderNode[],
