@@ -117,7 +117,10 @@ export function whatsappInboundRoutes(ingestion: MessageIngestionService) {
       // 3. Walk entry → changes → value
       for (const entry of result.data.entry) {
         for (const change of entry.changes) {
-          if (change.field !== 'messages') continue;
+          if (change.field !== 'messages') {
+            request.log.debug({ field: change.field }, 'Skipping unknown WhatsApp change field');
+            continue;
+          }
 
           const { messages = [], statuses = [] } = change.value;
 
