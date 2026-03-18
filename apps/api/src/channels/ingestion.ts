@@ -1,6 +1,7 @@
 import type { InboundMessage } from '@kommand/shared';
 import type { FastifyBaseLogger } from 'fastify';
 import { MAX_MESSAGE_LENGTH } from '../config/index.js';
+import { handlePipelineError } from '../core/error-handler.js';
 import type { ChannelAdapter } from './adapter.interface.js';
 import { MockAdapter } from './adapters/mock.adapter.js';
 
@@ -38,6 +39,16 @@ export class MessageIngestionService {
         await this.processInbound(job.channelType, job.raw);
       } catch (err) {
         this.logger.error({ err, job }, 'Failed to process inbound message');
+        // Best-effort: try to send a friendly error back via the adapter
+        try {
+          const adapter = adapters[job.channelType] ?? adapters['whatsapp']!;
+          const raw = job.raw as Record<string, unknown>;
+          const userId = (raw['userId'] as string) ?? 'unknown';
+          const outbound = handlePipelineError(err, userId, job.channelType);
+          await adapter.send(adapter.formatOutbound(outbound));
+        } catch {
+          // Swallow — nothing more we can do
+        }
       }
     }
     isProcessing = false;

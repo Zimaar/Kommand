@@ -2,6 +2,8 @@ import crypto from 'node:crypto';
 import type { ToolContext, ToolResult } from '@kommand/shared';
 import type { ToolRegistry } from './tool-registry.js';
 import type { ConfirmationEngine } from './confirmation-engine.js';
+import { withRetry, isTransientError } from './retry.js';
+import { circuitBreaker } from './circuit-breaker.js';
 
 export interface CommandStore {
   findByIdempotencyKey(key: string): Promise<{ output: unknown } | null>;
@@ -144,8 +146,33 @@ export class ToolDispatcher {
       idempotencyKey,
     });
 
+    const platform = tool.platform;
+
+    // Circuit breaker check
+    if (circuitBreaker.isOpen(platform)) {
+      await this.commandStore.update(command.id, {
+        status: 'failed',
+        error: 'circuit_open',
+      });
+      return {
+        success: false,
+        error: circuitBreaker.getOpenMessage(platform),
+      };
+    }
+
     try {
-      const result = await tool.handler(params, context);
+      const result = await withRetry(
+        () => tool.handler(params, context),
+        {
+          maxRetries: 2,
+          baseDelayMs: 500,
+          onRetry: (attempt, err) => {
+            console.warn(`[ToolDispatcher] Retry ${attempt} for "${toolName}":`, err);
+          },
+        }
+      );
+
+      circuitBreaker.recordSuccess(platform);
 
       await this.commandStore.update(command.id, {
         status: 'executed',
@@ -157,12 +184,15 @@ export class ToolDispatcher {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
 
+      if (isTransientError(err)) {
+        circuitBreaker.recordFailure(platform);
+      }
+
       await this.commandStore.update(command.id, {
         status: 'failed',
         error: message,
       });
 
-      // In production this would also call Sentry
       console.error(`[ToolDispatcher] Tool "${toolName}" failed:`, err);
 
       return {
