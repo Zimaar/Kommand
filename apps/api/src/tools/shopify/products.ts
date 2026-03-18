@@ -471,6 +471,24 @@ function makeUpdateInventory(db: DB) {
       return { success: false, error: `No products found matching "${input.product_name}"` };
     }
 
+    // Multiple ambiguous matches — ask the user to clarify before writing
+    if (matched.length > 1) {
+      const options = matched.map((p) => ({
+        id: p.id,
+        title: p.title,
+        inventory: totalInventory(p),
+        variantCount: p.variants.edges.length,
+      }));
+      return {
+        success: true,
+        data: {
+          requiresSelection: true,
+          matches: options,
+          message: `Found ${matched.length} products matching "${input.product_name}". Which one did you mean?`,
+        },
+      };
+    }
+
     const product = matched[0]!;
     const variant = pickVariant(product, input.variant);
     const currentQty = variant.inventoryQuantity;

@@ -701,6 +701,30 @@ describe('update_inventory handler', () => {
     expect(adjustCall[1].input.reason).toBe('correction');
   });
 
+  it('returns requiresSelection when multiple products match', async () => {
+    const products = [
+      makeProduct('White Tee - Small'),
+      makeProduct('White Tee - Large'),
+    ];
+    const graphql = vi.fn().mockResolvedValue(makeProductsPage(products));
+    mockGetShopifyClient.mockResolvedValue(makeClient((q, v) => graphql(q, v)));
+
+    const registry = new ToolRegistry();
+    registerShopifyProductTools({} as never, registry);
+    const result = await registry.get('update_inventory')!.handler(
+      { product_name: 'white tee', adjustment: 5 },
+      makeContext()
+    );
+
+    expect(result.success).toBe(true);
+    const data = result.data as { requiresSelection: boolean; matches: Array<{ title: string }> };
+    expect(data.requiresSelection).toBe(true);
+    expect(data.matches).toHaveLength(2);
+    expect(data.matches.map((m) => m.title)).toContain('White Tee - Small');
+    // Handler must NOT have called the mutation (graphql called only once for fetchProducts)
+    expect(graphql).toHaveBeenCalledTimes(1);
+  });
+
   it('returns error when no product matches', async () => {
     const graphql = vi.fn().mockResolvedValue(makeProductsPage([]));
     mockGetShopifyClient.mockResolvedValue(makeClient((q, v) => graphql(q, v)));
