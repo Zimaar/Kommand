@@ -238,7 +238,7 @@ export class WhatsAppSender {
 
   // ─── Internal ───────────────────────────────────────────────────────────────
 
-  protected async post(body: unknown): Promise<WhatsAppSendResult> {
+  private async post(body: unknown): Promise<WhatsAppSendResult> {
     const allowed = await acquireToken();
     if (!allowed) {
       throw AppError.rateLimitExceeded('WhatsApp rate limit reached (250 msg/s) — please retry shortly');
