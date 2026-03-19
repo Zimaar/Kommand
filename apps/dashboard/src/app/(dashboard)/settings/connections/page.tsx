@@ -367,7 +367,7 @@ export default function ConnectionsSettingsPage() {
     await fetchConnections();
   }
 
-  function handleReconnect(platform: string) {
+  async function handleReconnect(platform: string) {
     switch (platform) {
       case 'shopify':
         router.push('/onboarding?step=1');
@@ -375,10 +375,14 @@ export default function ConnectionsSettingsPage() {
       case 'whatsapp':
         router.push('/onboarding/whatsapp');
         break;
-      case 'xero':
+      case 'xero': {
+        const res = await fetch('/api/connections/xero/initiate', { method: 'POST' });
+        const json = (await res.json()) as { url?: string; error?: string };
+        if (json.url) window.location.href = json.url;
+        break;
+      }
       case 'quickbooks':
       case 'freshbooks':
-        // M5 accounting OAuth — placeholder for now
         router.push('/onboarding/preferences');
         break;
       default:
@@ -400,7 +404,7 @@ export default function ConnectionsSettingsPage() {
   // Platforms with active connections are hidden from the "add" section
   const addablePlatforms = [
     !hasShopify && { platform: 'shopify', comingSoon: false },
-    !hasXero    && { platform: 'xero',    comingSoon: true  },
+    !hasXero    && { platform: 'xero',    comingSoon: false },
     !hasWA      && { platform: 'whatsapp',comingSoon: false },
     { platform: 'slack',    comingSoon: true },
     { platform: 'email',    comingSoon: true },

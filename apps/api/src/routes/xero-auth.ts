@@ -222,6 +222,25 @@ export async function xeroAuthRoutes(app: FastifyInstance) {
     }
   );
 
+  // ── Pending tenants (multi-tenant selection) ─────────────────────────────────
+  // Called by the dashboard to retrieve the tenant list for a pending OAuth session.
+  app.get<{ Querystring: { pendingId?: string } }>(
+    '/auth/xero/pending-tenants',
+    async (request) => {
+      const { pendingId } = request.query;
+      if (!pendingId) throw AppError.validationError('pendingId is required');
+
+      const redis = getRedisClient();
+      const raw = await redis.get(`xero_pending:${pendingId}`);
+      if (!raw) {
+        throw AppError.unauthorized('Tenant selection window expired — please reconnect Xero');
+      }
+
+      const { tenants } = JSON.parse(raw) as { tenants: XeroTenant[] };
+      return { tenants: tenants.map((t) => ({ id: t.tenantId, name: t.tenantName })) };
+    }
+  );
+
   // ── Tenant selection (multi-tenant) ──────────────────────────────────────────
   // Called by the dashboard after the user picks an org.
   // Body: { pendingId: string; tenantId: string }
