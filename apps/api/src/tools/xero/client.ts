@@ -35,7 +35,11 @@ function decryptTokenPair(row: Pick<XeroConnectionRow, 'accessToken' | 'refreshT
   accessToken: string;
   refreshToken: string;
 } {
-  const [accessIv, refreshIv] = row.tokenIv.split('|') as [string, string];
+  const parts = row.tokenIv.split('|');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new Error(`Malformed tokenIv for connection ${row.accessToken.slice(0, 8)}… — expected "accessIv|refreshIv"`);
+  }
+  const [accessIv, refreshIv] = parts as [string, string];
   return {
     accessToken: decrypt(row.accessToken, accessIv),
     refreshToken: decrypt(row.refreshToken, refreshIv),
