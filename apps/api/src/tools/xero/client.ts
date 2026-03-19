@@ -82,8 +82,13 @@ export class XeroClient {
     const acquired = await redis.set(lockKey, '1', 'PX', REFRESH_LOCK_TTL_MS, 'NX');
 
     if (!acquired) {
-      // Another process holds the lock — wait for it to finish, then read fresh tokens from DB
-      await sleep(1500);
+      // Another process holds the lock — poll until it releases (or TTL expires), then read fresh tokens from DB
+      const deadline = Date.now() + REFRESH_LOCK_TTL_MS;
+      while (Date.now() < deadline) {
+        await sleep(250);
+        const stillLocked = await redis.exists(lockKey);
+        if (!stillLocked) break;
+      }
       const [row] = await db
         .select({
           id: accountingConnections.id,
