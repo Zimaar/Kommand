@@ -13,6 +13,7 @@ import { AiBrain } from '../core/ai-brain.js';
 import { ConversationManager } from '../core/conversation-manager.js';
 import { DbConfirmationEngine } from '../core/confirmation-engine.js';
 import { registerAllShopifyTools } from '../tools/shopify/shopify-tools.js';
+import { registerAllXeroTools } from '../tools/xero/index.js';
 import { config } from '../config/index.js';
 
 const KNOWN_CHANNEL_TYPES = new Set(['whatsapp', 'slack', 'email', 'telegram']);
@@ -65,6 +66,7 @@ class DbCommandStore implements CommandStore {
 export function buildPipelineDeps(): PipelineDeps {
   const registry = new ToolRegistry();
   registerAllShopifyTools(db, registry);
+  registerAllXeroTools(registry);
 
   const anthropic = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
   const aiBrain = new AiBrain(anthropic, registry);

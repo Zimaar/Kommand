@@ -72,9 +72,18 @@ export function getPromptText(toolName: string, params: unknown, tier: number, _
 
   switch (tier) {
     case 1: {
-      // e.g. send_invoice → "Send invoice #289 to Fatima for $7,800?"
       if (toolName === 'send_invoice') {
-        return `Send invoice ${p['invoice_number'] ?? ''} to the contact?\n*(Yes/No)*`;
+        return `Send invoice **${p['invoice_number'] ?? ''}** to the contact?\n*(Yes/No)*`;
+      }
+      if (toolName === 'send_invoice_reminder') {
+        return `Send payment reminder for invoice **${p['invoice_number'] ?? ''}**?\n*(Yes/No)*`;
+      }
+      if (toolName === 'create_invoice') {
+        const lineItems = (p['line_items'] as Array<{ quantity: number; unit_amount: number }> | undefined) ?? [];
+        const total = lineItems.reduce((sum, li) => sum + li.quantity * li.unit_amount, 0);
+        const itemCount = lineItems.length;
+        const dueStr = p['due_date'] ? `, due **${p['due_date']}**` : '';
+        return `Create invoice for **${p['contact_name'] ?? ''}** — ${total.toFixed(2)} (${itemCount} item${itemCount !== 1 ? 's' : ''})${dueStr}?\n*(Yes/No)*`;
       }
       if (toolName === 'fulfill_order') {
         return `Mark order ${p['order_identifier'] ?? ''} as fulfilled?\n*(Yes/No)*`;
