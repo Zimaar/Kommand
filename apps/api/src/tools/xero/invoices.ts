@@ -91,6 +91,27 @@ function round2(n: number): number {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Fetch all AUTHORISED invoices across all pages (Xero paginates at 100).
+ * Used for client-side overdue filtering where skipping pages would miss data.
+ */
+async function fetchAllAuthorisedInvoices(
+  client: Awaited<ReturnType<typeof getXeroClient>>
+): Promise<XeroInvoice[]> {
+  const all: XeroInvoice[] = [];
+  let page = 1;
+  while (true) {
+    const res = await client.get<XeroInvoicesResponse>(
+      `/Invoices?Statuses=AUTHORISED&order=DueDate%20ASC&page=${page}`
+    );
+    const batch = res.Invoices;
+    all.push(...batch);
+    if (batch.length < 100) break; // Xero page size is 100; fewer means last page
+    page++;
+  }
+  return all;
+}
+
 async function fetchInvoiceByNumber(
   client: Awaited<ReturnType<typeof getXeroClient>>,
   invoiceNumber: string
@@ -142,22 +163,23 @@ function makeGetInvoices() {
     const input = GetInvoicesInput.parse(params);
     const client = await getXeroClient(context.userId);
 
-    // OVERDUE is not a native Xero filter status — fetch AUTHORISED and filter client-side
-    let endpoint: string;
+    // OVERDUE is not a native Xero filter status — paginate all AUTHORISED and filter client-side
+    let invoices: XeroInvoice[];
     if (input.status === 'OVERDUE') {
-      endpoint = `/Invoices?Statuses=AUTHORISED&order=Date%20DESC&page=1`;
+      invoices = (await fetchAllAuthorisedInvoices(client)).filter((inv) =>
+        isOverdue(inv.DueDate, inv.Status)
+      );
     } else if (input.status) {
-      endpoint = `/Invoices?Statuses=${input.status}&order=Date%20DESC&page=1`;
+      const res = await client.get<XeroInvoicesResponse>(
+        `/Invoices?Statuses=${input.status}&order=Date%20DESC&page=1`
+      );
+      invoices = res.Invoices;
     } else {
       // Default: show active invoices (DRAFT + AUTHORISED)
-      endpoint = `/Invoices?Statuses=DRAFT,SUBMITTED,AUTHORISED&order=Date%20DESC&page=1`;
-    }
-
-    const res = await client.get<XeroInvoicesResponse>(endpoint);
-    let invoices = res.Invoices;
-
-    if (input.status === 'OVERDUE') {
-      invoices = invoices.filter((inv) => isOverdue(inv.DueDate, inv.Status));
+      const res = await client.get<XeroInvoicesResponse>(
+        `/Invoices?Statuses=DRAFT,SUBMITTED,AUTHORISED&order=Date%20DESC&page=1`
+      );
+      invoices = res.Invoices;
     }
 
     const data = invoices.slice(0, input.limit).map((inv) => ({
@@ -229,8 +251,20 @@ function makeCreateInvoice() {
       };
     }
 
-    // Use the closest name match (first result from Xero's search)
-    const contact = contactRes.Contacts[0]!;
+    // Prefer an exact name match (case-insensitive) to avoid fuzzy-match ambiguity
+    const exactMatch = contactRes.Contacts.find(
+      (c) => c.Name.toLowerCase() === input.contact_name.toLowerCase()
+    );
+
+    if (!exactMatch && contactRes.Contacts.length > 1) {
+      const names = contactRes.Contacts.slice(0, 5).map((c) => `"${c.Name}"`).join(', ');
+      return {
+        success: false,
+        error: `Multiple contacts match "${input.contact_name}": ${names}. Please use the exact contact name.`,
+      };
+    }
+
+    const contact = exactMatch ?? contactRes.Contacts[0]!;
 
     // 2. Build the invoice payload
     const lineItems = input.line_items.map((li) => ({
@@ -302,6 +336,10 @@ function makeSendInvoice() {
       return { success: false, error: `Invoice ${input.invoice_number} is already paid` };
     }
 
+    if (inv.Status === 'VOIDED' || inv.Status === 'DELETED') {
+      return { success: false, error: `Invoice ${input.invoice_number} has been ${inv.Status.toLowerCase()} and cannot be sent` };
+    }
+
     // POST /Invoices/{InvoiceID}/Email — empty body sends the invoice email
     await client.post(`/Invoices/${inv.InvoiceID}/Email`, {});
 
@@ -324,19 +362,9 @@ function makeGetOverdueInvoices() {
     void params; // no inputs
     const client = await getXeroClient(context.userId);
 
-    // Fetch all AUTHORISED invoices — filter by DueDate < today client-side
-    const res = await client.get<XeroInvoicesResponse>(
-      `/Invoices?Statuses=AUTHORISED&order=DueDate%20ASC&page=1`
-    );
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const overdue = res.Invoices.filter((inv) => {
-      const due = parseXeroDate(inv.DueDate);
-      due.setHours(0, 0, 0, 0);
-      return due < today && inv.AmountDue > 0;
-    });
+    // Paginate all AUTHORISED invoices (Xero max 100/page) before filtering client-side
+    const allAuthorised = await fetchAllAuthorisedInvoices(client);
+    const overdue = allAuthorised.filter((inv) => isOverdue(inv.DueDate, inv.Status) && inv.AmountDue > 0);
 
     // Sort by AmountDue descending (largest first)
     overdue.sort((a, b) => b.AmountDue - a.AmountDue);
@@ -366,7 +394,6 @@ function makeGetOverdueInvoices() {
 
 function makeSendInvoiceReminder() {
   return async (params: unknown, context: ToolContext): Promise<ToolResult> => {
-    void context;
     const input = SendInvoiceReminderInput.parse(params);
     const client = await getXeroClient(context.userId);
 
