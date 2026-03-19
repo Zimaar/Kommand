@@ -211,7 +211,7 @@ export async function xeroAuthRoutes(app: FastifyInstance) {
       const encryptedTokens = encryptTokenPair(tokens.access_token, tokens.refresh_token);
       await redis.set(
         `xero_pending:${pendingId}`,
-        JSON.stringify({ userId, ...encryptedTokens, expiresIn: tokens.expires_in, tenants }),
+        JSON.stringify({ userId, ...encryptedTokens, expiresAt: Date.now() + tokens.expires_in * 1000, tenants }),
         'EX',
         PKCE_TTL_SECONDS
       );
@@ -257,19 +257,21 @@ export async function xeroAuthRoutes(app: FastifyInstance) {
         throw AppError.unauthorized('Tenant selection window expired — please reconnect Xero');
       }
 
-      const { userId, accessToken, refreshToken, tokenIv, expiresIn, tenants } = JSON.parse(raw) as {
+      const { userId, accessToken, refreshToken, tokenIv, expiresAt, tenants } = JSON.parse(raw) as {
         userId: string;
         accessToken: string;
         refreshToken: string;
         tokenIv: string;
-        expiresIn: number;
+        expiresAt: number;
         tenants: XeroTenant[];
       };
       const [accessIv, refreshIv] = tokenIv.split('|') as [string, string];
+      // Convert absolute expiresAt back to remaining seconds so upsertConnection computes correctly
+      const remainingSeconds = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
       const tokens: XeroTokenResponse = {
         access_token: decrypt(accessToken, accessIv!),
         refresh_token: decrypt(refreshToken, refreshIv!),
-        expires_in: expiresIn,
+        expires_in: remainingSeconds,
         token_type: 'Bearer',
       };
 

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { ToolContext, ToolResult } from '@kommand/shared';
 import type { ToolRegistry } from '../../core/tool-registry.js';
 import { getXeroClient } from './client.js';
+import { getDateRange } from './bills.js';
 
 // ─── Xero Reports API types ───────────────────────────────────────────────────
 
@@ -138,31 +139,7 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-type ReportPeriod = 'this_month' | 'last_month' | 'last_30_days' | 'last_90_days' | 'this_year';
-
-function getReportDateRange(period: ReportPeriod): { fromDate: string; toDate: string } {
-  const now = new Date();
-  const y = now.getUTCFullYear();
-  const m = now.getUTCMonth();
-  const iso = (d: Date) => d.toISOString().slice(0, 10);
-
-  switch (period) {
-    case 'this_month':
-      return { fromDate: iso(new Date(Date.UTC(y, m, 1))), toDate: iso(now) };
-    case 'last_month': {
-      return {
-        fromDate: iso(new Date(Date.UTC(y, m - 1, 1))),
-        toDate: iso(new Date(Date.UTC(y, m, 0))),
-      };
-    }
-    case 'last_30_days':
-      return { fromDate: iso(new Date(Date.UTC(y, m, now.getUTCDate() - 30))), toDate: iso(now) };
-    case 'last_90_days':
-      return { fromDate: iso(new Date(Date.UTC(y, m, now.getUTCDate() - 90))), toDate: iso(now) };
-    case 'this_year':
-      return { fromDate: iso(new Date(Date.UTC(y, 0, 1))), toDate: iso(now) };
-  }
-}
+// Date range logic shared with bills.ts via getDateRange
 
 // ─── Zod input schemas ────────────────────────────────────────────────────────
 
@@ -185,7 +162,7 @@ function makeGetProfitLoss() {
     const input = GetProfitLossInput.parse(params);
     const client = await getXeroClient(context.userId);
 
-    const { fromDate, toDate } = getReportDateRange(input.period);
+    const { fromDate, toDate } = getDateRange(input.period);
     const res = await client.get<XeroReportsResponse>(
       `/Reports/ProfitAndLoss?fromDate=${fromDate}&toDate=${toDate}&standardLayout=true&paymentsOnly=false`
     );
@@ -270,8 +247,14 @@ function makeGetBalanceSheet() {
     const rows = report.Rows;
 
     // Standard balance sheet sections
-    // Assets: may be split into "Bank", "Current Assets", "Fixed Assets", "Non-current Assets"
-    const totalAssets = sumNestedSections(rows, 'asset', 'bank', 'fixed');
+    // Prefer an exact "Assets" parent section (nested layout) to avoid double-counting
+    // "Bank" as both a standalone section and under "Current Assets" in flat layouts.
+    const assetsSection = rows.find(
+      (r) => r.RowType === 'Section' && (r.Title ?? '').toLowerCase().trim() === 'assets'
+    );
+    const totalAssets = assetsSection
+      ? lastCellAmount(assetsSection.Rows?.find((r) => r.RowType === 'SummaryRow')?.Cells)
+      : sumNestedSections(rows, 'asset', 'bank', 'fixed');
     const totalLiabilities = sumNestedSections(rows, 'liabilit');
     const totalEquity = sumNestedSections(rows, 'equity', 'capital', 'retained');
 

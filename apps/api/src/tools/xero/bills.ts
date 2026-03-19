@@ -67,10 +67,10 @@ function daysUntilDue(dueDateRaw: string): number {
   return Math.round((due.getTime() - now.getTime()) / 86_400_000);
 }
 
-type ExpensePeriod = 'this_month' | 'last_month' | 'last_30_days' | 'last_90_days' | 'this_year';
+export type DateRangePeriod = 'this_month' | 'last_month' | 'last_30_days' | 'last_90_days' | 'this_year';
 
 /** Returns { fromDate, toDate } as YYYY-MM-DD strings for the given period */
-function getExpenseDateRange(period: ExpensePeriod): { fromDate: string; toDate: string } {
+export function getDateRange(period: DateRangePeriod): { fromDate: string; toDate: string } {
   const now = new Date();
   const y = now.getUTCFullYear();
   const m = now.getUTCMonth(); // 0-indexed
@@ -224,7 +224,6 @@ function makeGetBillsDue() {
 
 function makeApproveBill() {
   return async (params: unknown, context: ToolContext): Promise<ToolResult> => {
-    void context;
     const input = ApproveBillInput.parse(params);
     const client = await getXeroClient(context.userId);
 
@@ -300,7 +299,7 @@ function makeGetExpenseSummary() {
     const input = GetExpenseSummaryInput.parse(params);
     const client = await getXeroClient(context.userId);
 
-    const { fromDate, toDate } = getExpenseDateRange(input.period);
+    const { fromDate, toDate } = getDateRange(input.period);
 
     // Fetch PAID bills within the period (bills with payments recorded)
     // Also include AUTHORISED (approved, unpaid) to give a full accruals picture

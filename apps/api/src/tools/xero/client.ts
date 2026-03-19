@@ -37,7 +37,7 @@ function decryptTokenPair(row: Pick<XeroConnectionRow, 'accessToken' | 'refreshT
 } {
   const parts = row.tokenIv.split('|');
   if (parts.length !== 2 || !parts[0] || !parts[1]) {
-    throw new Error(`Malformed tokenIv for connection ${row.accessToken.slice(0, 8)}… — expected "accessIv|refreshIv"`);
+    throw new Error('Malformed tokenIv — expected "accessIv|refreshIv" format');
   }
   const [accessIv, refreshIv] = parts as [string, string];
   return {
@@ -114,6 +114,13 @@ export class XeroClient {
         this.refreshToken = refreshToken;
         this.tokenExpiresAt = row.tokenExpiresAt ?? new Date(0);
       }
+      // If the token is still expired after re-reading (e.g. the other process's refresh failed),
+      // throw rather than silently making API calls with an expired token.
+      if (Date.now() + TOKEN_REFRESH_BUFFER_MS >= this.tokenExpiresAt.getTime()) {
+        throw AppError.externalApiError(
+          'Xero token is still expired after another process attempted to refresh — please reconnect Xero'
+        );
+      }
       return;
     }
 
@@ -181,7 +188,7 @@ export class XeroClient {
 
     // Retry on Xero rate limit (429)
     if (response.status === 429 && attempt < 2) {
-      const retryAfter = parseInt(response.headers.get('Retry-After') ?? '2', 10);
+      const retryAfter = parseInt(response.headers.get('Retry-After') ?? '2', 10) || 2;
       await sleep(retryAfter * 1000);
       return this.fetchWithRetry(url, options, attempt + 1);
     }

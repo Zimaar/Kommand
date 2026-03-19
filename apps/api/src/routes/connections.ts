@@ -97,6 +97,7 @@ export async function connectionRoutes(app: FastifyInstance) {
           tenantName: accountingConnections.tenantName,
           isActive: accountingConnections.isActive,
           tokenExpiresAt: accountingConnections.tokenExpiresAt,
+          createdAt: accountingConnections.createdAt,
           updatedAt: accountingConnections.updatedAt,
         })
         .from(accountingConnections)

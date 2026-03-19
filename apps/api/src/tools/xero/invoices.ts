@@ -325,6 +325,13 @@ function makeSendInvoice() {
       return { success: false, error: `Invoice ${input.invoice_number} not found` };
     }
 
+    if (inv.Type !== 'ACCREC') {
+      return {
+        success: false,
+        error: `"${input.invoice_number}" is a bill (accounts payable), not a sales invoice. Use approve_bill instead.`,
+      };
+    }
+
     if (inv.Status === 'DRAFT' || inv.Status === 'SUBMITTED') {
       return {
         success: false,

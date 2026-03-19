@@ -38,6 +38,7 @@ interface AccountingConnection {
   tenantName: string | null;
   isActive: boolean;
   tokenExpiresAt: string | null;
+  createdAt: string;
   updatedAt: string;
 }
 
@@ -477,7 +478,7 @@ export default function ConnectionsSettingsPage() {
                 platform={data.accounting.platform}
                 title={data.accounting.tenantName ?? data.accounting.platform}
                 subtitle={data.accounting.platform}
-                connectedAt={data.accounting.updatedAt}
+                connectedAt={data.accounting.createdAt}
                 lastActivity={data.accounting.updatedAt}
                 status={statusFor(data.accounting.isActive, data.accounting.tokenExpiresAt)}
                 onDisconnect={handleDisconnect}
