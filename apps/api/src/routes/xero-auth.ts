@@ -205,39 +205,41 @@ export async function xeroAuthRoutes(app: FastifyInstance) {
         return reply.redirect(`${config.DASHBOARD_URL}/settings/connections?xero=connected`);
       }
 
-      // Multiple tenants — store encrypted tokens + tenants in Redis for selection step
-      const pendingKey = `xero_pending:${userId}`;
+      // Multiple tenants — store encrypted tokens + tenants in Redis for selection step.
+      // Key by a random pendingId (not userId) so concurrent OAuth flows don't overwrite each other.
+      const pendingId = crypto.randomBytes(16).toString('hex');
       const encryptedTokens = encryptTokenPair(tokens.access_token, tokens.refresh_token);
       await redis.set(
-        pendingKey,
-        JSON.stringify({ ...encryptedTokens, expiresIn: tokens.expires_in, tenants }),
+        `xero_pending:${pendingId}`,
+        JSON.stringify({ userId, ...encryptedTokens, expiresIn: tokens.expires_in, tenants }),
         'EX',
         PKCE_TTL_SECONDS
       );
 
       const selectUrl = new URL(`${config.DASHBOARD_URL}/onboarding/xero/select-tenant`);
-      selectUrl.searchParams.set('userId', userId);
+      selectUrl.searchParams.set('pendingId', pendingId);
       return reply.redirect(selectUrl.toString());
     }
   );
 
   // ── Tenant selection (multi-tenant) ──────────────────────────────────────────
   // Called by the dashboard after the user picks an org.
-  // Body: { userId: string; tenantId: string }
-  app.post<{ Body: { userId?: string; tenantId?: string } }>(
+  // Body: { pendingId: string; tenantId: string }
+  app.post<{ Body: { pendingId?: string; tenantId?: string } }>(
     '/auth/xero/select-tenant',
     async (request) => {
-      const { userId, tenantId } = request.body ?? {};
-      if (!userId) throw AppError.validationError('userId is required');
+      const { pendingId, tenantId } = request.body ?? {};
+      if (!pendingId) throw AppError.validationError('pendingId is required');
       if (!tenantId) throw AppError.validationError('tenantId is required');
 
       const redis = getRedisClient();
-      const raw = await redis.get(`xero_pending:${userId}`);
+      const raw = await redis.get(`xero_pending:${pendingId}`);
       if (!raw) {
         throw AppError.unauthorized('Tenant selection window expired — please reconnect Xero');
       }
 
-      const { accessToken, refreshToken, tokenIv, expiresIn, tenants } = JSON.parse(raw) as {
+      const { userId, accessToken, refreshToken, tokenIv, expiresIn, tenants } = JSON.parse(raw) as {
+        userId: string;
         accessToken: string;
         refreshToken: string;
         tokenIv: string;
@@ -266,7 +268,7 @@ export async function xeroAuthRoutes(app: FastifyInstance) {
       if (!user) throw AppError.unauthorized('User not found');
 
       await upsertConnection(userId, tenant, tokens);
-      await redis.del(`xero_pending:${userId}`);
+      await redis.del(`xero_pending:${pendingId}`);
 
       app.log.info({ userId, tenantId: tenant.tenantId, tenantName: tenant.tenantName }, 'Xero tenant selected');
 
