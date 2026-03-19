@@ -1,6 +1,6 @@
 import { Queue, Worker } from 'bullmq';
 import type { Job, ConnectionOptions } from 'bullmq';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { scheduledJobs } from '../db/schema.js';
 
@@ -42,7 +42,7 @@ export class JobScheduler {
         attempts: MAX_ATTEMPTS,
         backoff: { type: 'exponential', delay: 1000 },
         removeOnComplete: { count: 100 },
-        removeOnFail: false, // Retain failed jobs so the DLQ handler can inspect them
+        removeOnFail: { count: 500 }, // Clean up after DLQ handler copies them
       },
     });
 
@@ -83,6 +83,8 @@ export class JobScheduler {
   // ── Worker ───────────────────────────────────────────────────────────────────
 
   async start(): Promise<void> {
+    if (this.worker) return; // Guard against double-start (hot-reload, test teardown)
+
     this.worker = new Worker(
       QUEUE_NAME,
       async (job: Job) => {
@@ -90,7 +92,7 @@ export class JobScheduler {
         if (!handler) throw new Error(`No handler registered for job type: ${job.name}`);
 
         await handler((job.data ?? {}) as Record<string, unknown>);
-        await this._markRan(job.name);
+        await this._markRan(job.name, (job.data as Record<string, unknown>).userId as string | undefined);
       },
       { connection: this.connection, concurrency: 5 }
     );
@@ -128,11 +130,17 @@ export class JobScheduler {
       .where(eq(scheduledJobs.isActive, true));
 
     for (const row of rows) {
-      // Per-user cron jobs use a compound jobId to avoid collisions
-      await this.queue.add(row.jobType, (row.config ?? {}) as Record<string, unknown>, {
-        repeat: { pattern: row.cronExpression },
-        jobId:  `cron:${row.jobType}:${row.userId}`,
-      });
+      if (!row.cronExpression) continue; // Defensive: skip malformed rows
+      // Per-user cron jobs use a compound jobId to avoid collisions.
+      // userId is included in job data so _markRan can scope its update correctly.
+      await this.queue.add(
+        row.jobType,
+        { ...(row.config ?? {}), userId: row.userId } as Record<string, unknown>,
+        {
+          repeat: { pattern: row.cronExpression },
+          jobId:  `cron:${row.jobType}:${row.userId}`,
+        }
+      );
     }
   }
 
@@ -146,12 +154,15 @@ export class JobScheduler {
 
   // ── Internals ────────────────────────────────────────────────────────────────
 
-  private async _markRan(jobType: string): Promise<void> {
+  private async _markRan(jobType: string, userId?: string): Promise<void> {
     if (!DB_JOB_TYPES.has(jobType)) return;
+    const conditions = userId
+      ? [eq(scheduledJobs.jobType, jobType as DbJobType), eq(scheduledJobs.userId, userId)]
+      : [eq(scheduledJobs.jobType, jobType as DbJobType)];
     await db
       .update(scheduledJobs)
       .set({ lastRunAt: new Date() })
-      .where(eq(scheduledJobs.jobType, jobType as DbJobType));
+      .where(conditions.length === 2 ? and(...conditions) : conditions[0]);
   }
 }
 
