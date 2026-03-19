@@ -4,6 +4,7 @@ import { webhookRoutes, buildPipelineDeps } from './webhook.js';
 import { shopifyAuthRoutes } from './shopify-auth.js';
 import { connectionRoutes } from './connections.js';
 import { whatsappChannelRoutes } from './whatsapp-channels.js';
+import { userPreferencesRoutes } from './user-preferences.js';
 import { whatsappWebhookRoutes } from '../channels/adapters/whatsapp/webhook.js';
 import { whatsappInboundRoutes } from '../channels/adapters/whatsapp/inbound.js';
 import { MessageIngestionService } from '../channels/ingestion.js';
@@ -13,6 +14,7 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(shopifyAuthRoutes);
   await app.register(connectionRoutes);
   await app.register(whatsappChannelRoutes);
+  await app.register(userPreferencesRoutes);
 
   // Shared pipeline — single ingestion service used by both the generic and WhatsApp-specific handlers
   const deps = buildPipelineDeps();

@@ -75,6 +75,12 @@ function OnboardingContent() {
     }
   }, [shopifyParam, fetchConnections]);
 
+  // Steps 2 & 3 have dedicated sub-pages — redirect if someone navigates here directly
+  useEffect(() => {
+    if (currentStep === 2) router.replace('/onboarding/whatsapp');
+    if (currentStep === 3) router.replace('/onboarding/preferences');
+  }, [currentStep, router]);
+
   const isConnected = !!connection || shopifyParam === 'connected';
 
   async function handleConnect() {

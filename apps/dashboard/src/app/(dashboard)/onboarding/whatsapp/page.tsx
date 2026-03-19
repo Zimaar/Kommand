@@ -227,7 +227,7 @@ function WhatsAppOnboardingContent() {
   }
 
   function goNext() {
-    router.push('/onboarding?step=3');
+    router.push('/onboarding/preferences');
   }
 
   // ─── Render ───────────────────────────────────────────────────────────────
