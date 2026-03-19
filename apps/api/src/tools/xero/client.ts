@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/connection.js';
 import { accountingConnections } from '../../db/schema.js';
 import { config } from '../../config/index.js';
@@ -240,7 +240,13 @@ export async function getXeroClient(userId: string): Promise<XeroClient> {
       tokenExpiresAt: accountingConnections.tokenExpiresAt,
     })
     .from(accountingConnections)
-    .where(eq(accountingConnections.userId, userId))
+    .where(
+      and(
+        eq(accountingConnections.userId, userId),
+        eq(accountingConnections.platform, 'xero'),
+        eq(accountingConnections.isActive, true)
+      )
+    )
     .limit(1);
 
   if (!row || !row.tenantId) {
