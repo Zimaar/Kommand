@@ -85,6 +85,9 @@ export function getPromptText(toolName: string, params: unknown, tier: number, _
         const dueStr = p['due_date'] ? `, due **${p['due_date']}**` : '';
         return `Create invoice for **${p['contact_name'] ?? ''}** — ${total.toFixed(2)} (${itemCount} item${itemCount !== 1 ? 's' : ''})${dueStr}?\n*(Yes/No)*`;
       }
+      if (toolName === 'approve_bill') {
+        return `Approve bill **${p['bill_id'] ?? ''}** for payment?\n*(Yes/No)*`;
+      }
       if (toolName === 'fulfill_order') {
         return `Mark order ${p['order_identifier'] ?? ''} as fulfilled?\n*(Yes/No)*`;
       }
