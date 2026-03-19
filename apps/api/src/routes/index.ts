@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { healthRoutes } from './health.js';
 import { webhookRoutes, buildPipelineDeps } from './webhook.js';
 import { shopifyAuthRoutes } from './shopify-auth.js';
+import { xeroAuthRoutes } from './xero-auth.js';
 import { connectionRoutes } from './connections.js';
 import { whatsappChannelRoutes } from './whatsapp-channels.js';
 import { userPreferencesRoutes } from './user-preferences.js';
@@ -16,6 +17,7 @@ import { MessageIngestionService } from '../channels/ingestion.js';
 export async function registerRoutes(app: FastifyInstance) {
   await app.register(healthRoutes);
   await app.register(shopifyAuthRoutes);
+  await app.register(xeroAuthRoutes);
   await app.register(connectionRoutes);
   await app.register(whatsappChannelRoutes);
   await app.register(userPreferencesRoutes);
