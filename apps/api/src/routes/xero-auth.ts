@@ -4,7 +4,7 @@ import { eq, and } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { accountingConnections, users } from '../db/schema.js';
 import { config } from '../config/index.js';
-import { encrypt } from '../utils/encryption.js';
+import { encrypt, decrypt } from '../utils/encryption.js';
 import { getRedisClient } from '../utils/redis.js';
 import { AppError } from '../utils/errors.js';
 
@@ -218,11 +218,12 @@ export async function xeroAuthRoutes(app: FastifyInstance) {
         return reply.redirect(`${config.DASHBOARD_URL}/settings/connections?xero=connected`);
       }
 
-      // Multiple tenants — store tokens + tenants in Redis for selection step
+      // Multiple tenants — store encrypted tokens + tenants in Redis for selection step
       const pendingKey = `xero_pending:${userId}`;
+      const encryptedTokens = encryptTokenPair(tokens.access_token, tokens.refresh_token);
       await redis.set(
         pendingKey,
-        JSON.stringify({ tokens, tenants }),
+        JSON.stringify({ ...encryptedTokens, expiresIn: tokens.expires_in, tenants }),
         'EX',
         PKCE_TTL_SECONDS
       );
@@ -249,9 +250,19 @@ export async function xeroAuthRoutes(app: FastifyInstance) {
         throw AppError.unauthorized('Tenant selection window expired — please reconnect Xero');
       }
 
-      const { tokens, tenants } = JSON.parse(raw) as {
-        tokens: XeroTokenResponse;
+      const { accessToken, refreshToken, tokenIv, expiresIn, tenants } = JSON.parse(raw) as {
+        accessToken: string;
+        refreshToken: string;
+        tokenIv: string;
+        expiresIn: number;
         tenants: XeroTenant[];
+      };
+      const [accessIv, refreshIv] = tokenIv.split('|') as [string, string];
+      const tokens: XeroTokenResponse = {
+        access_token: decrypt(accessToken, accessIv!),
+        refresh_token: decrypt(refreshToken, refreshIv!),
+        expires_in: expiresIn,
+        token_type: 'Bearer',
       };
 
       const tenant = tenants.find((t) => t.tenantId === tenantId);
