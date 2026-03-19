@@ -108,7 +108,11 @@ function OnboardingContent() {
   }
 
   function handleSkip() {
-    router.push(`/onboarding?step=${currentStep + 1}`);
+    if (currentStep === 1) {
+      router.push('/onboarding/whatsapp');
+    } else {
+      router.push(`/onboarding?step=${currentStep + 1}`);
+    }
   }
 
   function handleBack() {
@@ -161,7 +165,7 @@ function OnboardingContent() {
                   </p>
                 </div>
               </div>
-              <Button onClick={() => router.push('/onboarding?step=2')} className="w-full">
+              <Button onClick={() => router.push('/onboarding/whatsapp')} className="w-full">
                 Continue <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </div>

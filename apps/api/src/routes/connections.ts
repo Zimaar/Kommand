@@ -62,6 +62,7 @@ export async function connectionRoutes(app: FastifyInstance) {
         .select({
           id: channels.id,
           type: channels.type,
+          channelId: channels.channelId,
           isActive: channels.isActive,
         })
         .from(channels)
