@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { eq, and } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../db/connection.js';
 import { accountingConnections, users } from '../db/schema.js';
 import { config } from '../config/index.js';
@@ -93,31 +93,9 @@ async function upsertConnection(
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
   const encrypted = encryptTokenPair(tokens.access_token, tokens.refresh_token);
 
-  const existing = await db
-    .select({ id: accountingConnections.id })
-    .from(accountingConnections)
-    .where(
-      and(
-        eq(accountingConnections.userId, userId),
-        eq(accountingConnections.platform, 'xero'),
-        eq(accountingConnections.tenantId, tenant.tenantId)
-      )
-    )
-    .limit(1);
-
-  if (existing.length > 0) {
-    await db
-      .update(accountingConnections)
-      .set({
-        ...encrypted,
-        tenantName: tenant.tenantName,
-        tokenExpiresAt: expiresAt,
-        isActive: true,
-        updatedAt: new Date(),
-      })
-      .where(eq(accountingConnections.id, existing[0]!.id));
-  } else {
-    await db.insert(accountingConnections).values({
+  await db
+    .insert(accountingConnections)
+    .values({
       userId,
       platform: 'xero',
       tenantId: tenant.tenantId,
@@ -126,8 +104,17 @@ async function upsertConnection(
       tokenExpiresAt: expiresAt,
       scopes: XERO_SCOPES.split(' '),
       isActive: true,
+    })
+    .onConflictDoUpdate({
+      target: [accountingConnections.userId, accountingConnections.platform, accountingConnections.tenantId],
+      set: {
+        ...encrypted,
+        tenantName: tenant.tenantName,
+        tokenExpiresAt: expiresAt,
+        isActive: true,
+        updatedAt: new Date(),
+      },
     });
-  }
 }
 
 export async function xeroAuthRoutes(app: FastifyInstance) {
